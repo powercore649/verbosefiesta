@@ -127,6 +127,18 @@ export default function Sidebar({ user, selectedGuild, onSelectGuild, activePage
           <i className="fa-solid fa-chart-pie"></i>
           <span>Overview</span>
         </li>
+        <li className={activePage === 'analytics' ? 'active' : ''} onClick={() => { setActivePage('analytics'); closeMobileMenu(); }}>
+          <i className="fa-solid fa-chart-line"></i>
+          <span>Analytics</span>
+        </li>
+        <li className={activePage === 'members' ? 'active' : ''} onClick={() => { setActivePage('members'); closeMobileMenu(); }}>
+          <i className="fa-solid fa-users"></i>
+          <span>Members Manager</span>
+        </li>
+        <li className={activePage === 'notifications' ? 'active' : ''} onClick={() => { setActivePage('notifications'); closeMobileMenu(); }}>
+          <i className="fa-solid fa-bell"></i>
+          <span>Notifications</span>
+        </li>
         <li className={activePage === 'moderation' ? 'active' : ''} onClick={() => { setActivePage('moderation'); closeMobileMenu(); }}>
           <i className="fa-solid fa-gavel"></i>
           <span>Moderation</span>

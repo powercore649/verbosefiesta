@@ -8,6 +8,9 @@ import LandingOverlay from '../components/LandingOverlay';
 import Docs from '../components/Docs';
 import CommandCenter from '../components/CommandCenter';
 import AccountManager from '../components/AccountManager';
+import Analytics from '../components/Analytics';
+import Notifications from '../components/Notifications';
+import MembersManager from '../components/MembersManager';
 
 function parseJwt(token) {
   try {
@@ -91,15 +94,18 @@ export default function Dashboard() {
   };
 
   const pageTitleMap = {
-    overview: 'Dashboard Overview',
-    moderation: 'Server Moderation',
-    automod: 'Auto Moderation',
-    commands: 'Command Center',
-    docs: 'Documentation & Help',
-    account: 'Account Manager'
+    overview:      'Dashboard Overview',
+    moderation:    'Server Moderation',
+    automod:       'Auto Moderation',
+    commands:      'Command Center',
+    docs:          'Documentation & Help',
+    account:       'Account Manager',
+    analytics:     'Analytics & Statistics',
+    notifications: 'Notifications & Alerts',
+    members:       'Members Manager',
   };
 
-  const requiresGuild = ['overview', 'moderation', 'automod'].includes(activePage);
+  const requiresGuild = ['overview', 'moderation', 'automod', 'analytics', 'notifications', 'members'].includes(activePage);
   const canRenderPage = !showLanding && (!requiresGuild || selectedGuild);
 
   const avatarUrl = user?.avatar
@@ -199,12 +205,15 @@ export default function Dashboard() {
         <div className="content-area">
           {canRenderPage && (
             <>
-              {activePage === 'overview' && <Overview selectedGuild={selectedGuild} />}
-              {activePage === 'moderation' && <Moderation selectedGuild={selectedGuild} />}
-              {activePage === 'automod' && <AutoModeration selectedGuild={selectedGuild} />}
-              {activePage === 'commands' && <CommandCenter />}
-              {activePage === 'docs' && <Docs />}
-              {activePage === 'account' && <AccountManager user={user} />}
+              {activePage === 'overview'      && <Overview selectedGuild={selectedGuild} />}
+              {activePage === 'moderation'    && <Moderation selectedGuild={selectedGuild} />}
+              {activePage === 'automod'       && <AutoModeration selectedGuild={selectedGuild} />}
+              {activePage === 'commands'      && <CommandCenter />}
+              {activePage === 'docs'          && <Docs />}
+              {activePage === 'account'       && <AccountManager user={user} />}
+              {activePage === 'analytics'     && <Analytics selectedGuild={selectedGuild} />}
+              {activePage === 'notifications' && <Notifications selectedGuild={selectedGuild} />}
+              {activePage === 'members'       && <MembersManager selectedGuild={selectedGuild} />}
             </>
           )}
 
