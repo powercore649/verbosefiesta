@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { usePreferences } from '../hooks/usePreferences.jsx';
 
 export default function Moderation({ selectedGuild }) {
   const [warnings, setWarnings] = useState([]);
@@ -6,6 +7,8 @@ export default function Moderation({ selectedGuild }) {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('cases');
+  const prevCasesCountRef = useRef(null);
+  const { prefs, playNotificationSound } = usePreferences();
 
   useEffect(() => {
     fetchData();
@@ -23,7 +26,14 @@ export default function Moderation({ selectedGuild }) {
       ]);
 
       if (warnRes.ok) setWarnings(await warnRes.json());
-      if (caseRes.ok) setCases(await caseRes.json());
+      if (caseRes.ok) {
+        const newCases = await caseRes.json();
+        if (prefs.notificationSounds && prevCasesCountRef.current !== null && newCases.length > prevCasesCountRef.current) {
+          playNotificationSound();
+        }
+        prevCasesCountRef.current = newCases.length;
+        setCases(newCases);
+      }
     } catch (e) {
       console.error(e);
     } finally {

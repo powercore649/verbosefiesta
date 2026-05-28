@@ -3956,3 +3956,19 @@ input:checked + .slider:before {
     }
 }
 
+
+
+/* ── Compact Mode ── */
+body.compact-mode .sidebar { padding: 8px 0; }
+body.compact-mode .sidebar-header { padding: 10px 16px; }
+body.compact-mode .nav-links li { padding: 6px 16px; gap: 8px; }
+body.compact-mode .sidebar-section-label { padding: 4px 16px; font-size: 0.65rem; }
+body.compact-mode .topbar { padding: 8px 20px; min-height: 52px; }
+body.compact-mode .content-area { padding: 12px 20px; }
+body.compact-mode .glass-panel { padding: 14px 16px; }
+body.compact-mode .ov-stat-card { padding: 12px 14px; }
+body.compact-mode .account-manager { gap: 12px; }
+body.compact-mode h2 { font-size: 1.2rem; }
+body.compact-mode .settings-pref-item { padding: 10px 0; }
+body.compact-mode .settings-details-grid { gap: 10px; }
+

@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Chart from 'chart.js/auto';
+import { usePreferences } from '../hooks/usePreferences.jsx';
 
 const ACTION_COLORS = {
   WARN: { color: '#ffbb33', bg: 'rgba(255, 187, 51, 0.15)' },
@@ -24,14 +25,28 @@ export default function Overview({ selectedGuild }) {
   const [aiAnalysis, setAiAnalysis] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState(null);
+  const [lastRefresh, setLastRefresh] = useState(null);
+  const autoRefreshRef = useRef(null);
+  const { prefs } = usePreferences();
 
   useEffect(() => {
     if (selectedGuild) fetchAllData();
   }, [selectedGuild]);
 
-  const fetchAllData = async () => {
+  // Auto-refresh every 30s when pref is enabled
+  useEffect(() => {
+    if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
+    if (prefs.autoRefresh && selectedGuild) {
+      autoRefreshRef.current = setInterval(() => {
+        fetchAllData(true);
+      }, 30000);
+    }
+    return () => { if (autoRefreshRef.current) clearInterval(autoRefreshRef.current); };
+  }, [prefs.autoRefresh, selectedGuild]);
+
+  const fetchAllData = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const token = localStorage.getItem('zenith_token');
       const headers = { Authorization: `Bearer ${token}` };
 
@@ -42,10 +57,11 @@ export default function Overview({ selectedGuild }) {
 
       if (statsRes.ok) setStats(await statsRes.json());
       if (guildRes.ok) setGuildInfo(await guildRes.json());
+      setLastRefresh(new Date());
     } catch (error) {
       console.error('[Overview Fetch Error]', error);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -252,6 +268,22 @@ export default function Overview({ selectedGuild }) {
 
   return (
     <div className="ov-container">
+      {prefs.autoRefresh && lastRefresh && (
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: '8px',
+          background: 'rgba(0,200,81,0.1)', border: '1px solid rgba(0,200,81,0.25)',
+          borderRadius: '20px', padding: '5px 14px', marginBottom: '16px',
+          fontSize: '0.8rem', color: '#00C851',
+        }}>
+          <span style={{
+            width: '7px', height: '7px', borderRadius: '50%',
+            background: '#00C851', display: 'inline-block',
+            animation: 'overviewPulse 1.5s infinite',
+          }} />
+          Auto-refresh ON · last update {lastRefresh.toLocaleTimeString()}
+        </div>
+      )}
+      <style>{`@keyframes overviewPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }`}</style>
       <div className="ov-stats-grid">
         {[
           ['fa-gavel', 'Total Cases', stats.totalCases, 'rgba(255, 102, 178, 0.12)', '#ff66b2'],

@@ -1,10 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { usePreferences } from '../hooks/usePreferences.jsx';
+
+function formatMemberCount(n) {
+  if (!n) return null;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k members`;
+  return `${n} members`;
+}
 
 export default function Sidebar({ user, selectedGuild, onSelectGuild, activePage, setActivePage, mobileMenuOpen, setMobileMenuOpen }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [memberCounts, setMemberCounts] = useState({});
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
+  const { prefs } = usePreferences();
 
   const currentGuild = user?.allowedGuilds?.find(g => g.id === selectedGuild);
 
@@ -14,9 +23,30 @@ export default function Sidebar({ user, selectedGuild, onSelectGuild, activePage
         setDropdownOpen(false);
       }
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Fetch member counts when pref is enabled
+  useEffect(() => {
+    if (!prefs.showMemberCount || !user?.allowedGuilds?.length) return;
+    const token = localStorage.getItem('zenith_token');
+    const headers = { Authorization: `Bearer ${token}` };
+    user.allowedGuilds.forEach(async g => {
+      try {
+        const res = await fetch(`/api/overview/${g.id}/guild-info`, { headers });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.member_count || data.memberCount) {
+            setMemberCounts(prev => ({
+              ...prev,
+              [g.id]: data.member_count || data.memberCount,
+            }));
+          }
+        }
+      } catch { /* ignore */ }
+    });
+  }, [prefs.showMemberCount, user?.allowedGuilds]);
 
   const handleLogout = () => {
     localStorage.removeItem('zenith_token');
@@ -34,8 +64,8 @@ export default function Sidebar({ user, selectedGuild, onSelectGuild, activePage
           <p className="sidebar-kicker">AI Moderation Platform</p>
           <h2 className="brand-text-glow">Zyntra</h2>
         </div>
-        <button 
-          className="btn-icon mobile-only" 
+        <button
+          className="btn-icon mobile-only"
           onClick={closeMobileMenu}
           style={{ background: 'none', border: 'none', color: '#DBDEE1', fontSize: '1.2rem', cursor: 'pointer' }}
         >
@@ -44,18 +74,25 @@ export default function Sidebar({ user, selectedGuild, onSelectGuild, activePage
       </div>
 
       <div className="guild-selector" id="guild-selector" ref={dropdownRef} onClick={() => setDropdownOpen(!dropdownOpen)}>
-        <img 
-          src={currentGuild?.icon ? `https://cdn.discordapp.com/icons/${currentGuild.id}/${currentGuild.icon}.png` : 'https://cdn.discordapp.com/embed/avatars/0.png'} 
-          alt="Guild" className="guild-icon" 
+        <img
+          src={currentGuild?.icon ? `https://cdn.discordapp.com/icons/${currentGuild.id}/${currentGuild.icon}.png` : 'https://cdn.discordapp.com/embed/avatars/0.png'}
+          alt="Guild" className="guild-icon"
         />
-        <span className="guild-name">{currentGuild?.name || 'Select Server'}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+          <span className="guild-name">{currentGuild?.name || 'Select Server'}</span>
+          {prefs.showMemberCount && currentGuild && memberCounts[currentGuild.id] && (
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: 1 }}>
+              {formatMemberCount(memberCounts[currentGuild.id])}
+            </span>
+          )}
+        </div>
         <i className="fa-solid fa-chevron-down"></i>
-        
+
         <div className={`guild-dropdown ${dropdownOpen ? 'active' : ''}`}>
           {user?.allowedGuilds?.map(g => (
-            <div 
-              key={g.id} 
-              className="guild-option" 
+            <div
+              key={g.id}
+              className="guild-option"
               onClick={(e) => { e.stopPropagation(); onSelectGuild(g.id); setDropdownOpen(false); closeMobileMenu(); }}
             >
               {g.icon ? (
@@ -63,7 +100,14 @@ export default function Sidebar({ user, selectedGuild, onSelectGuild, activePage
               ) : (
                 <div className="guild-icon" style={{ background: '#5865F2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>#</div>
               )}
-              <span className="guild-name">{g.name}</span>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span className="guild-name">{g.name}</span>
+                {prefs.showMemberCount && memberCounts[g.id] && (
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', lineHeight: 1 }}>
+                    {formatMemberCount(memberCounts[g.id])}
+                  </span>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -115,9 +159,9 @@ export default function Sidebar({ user, selectedGuild, onSelectGuild, activePage
       </div>
 
       <div className="user-profile" style={{ marginTop: 'auto' }}>
-        <img 
-          src={user?.avatar ? `https://cdn.discordapp.com/avatars/${user.userId}/${user.avatar}.png` : 'https://cdn.discordapp.com/embed/avatars/0.png'} 
-          alt="User" className="user-avatar" 
+        <img
+          src={user?.avatar ? `https://cdn.discordapp.com/avatars/${user.userId}/${user.avatar}.png` : 'https://cdn.discordapp.com/embed/avatars/0.png'}
+          alt="User" className="user-avatar"
         />
         <div className="user-info">
           <h4>{user?.username || 'Loading...'}</h4>
