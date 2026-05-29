@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 
-// Real API endpoints used:
-// /api/overview/${guild}/members  → members[]{id, username, global_name, avatar, roles[], joinedAt, bot, flags}
-// /api/overview/${guild}/guild-info → {name, memberCount, channelCount, icon}
-// /api/moderation/${guild}/cases  → for infraction count per user
-// /api/moderation/${guild}/warnings → for warning count per user
+// Stratégie : /api/overview/{guild}/members n'existe pas sur ce backend.
+// On construit la liste depuis les données réelles :
+//   - /api/moderation/{guild}/cases  → targetId, targetTag, moderatorTag
+//   - /api/moderation/{guild}/warnings → userId
+//   - /api/overview/{guild}/guild-info → memberCount, name
+// Chaque utilisateur unique ayant été ciblé ou modéré est affiché.
 
-function avatarUrl(userId, avatar) {
-  if (avatar) return `https://cdn.discordapp.com/avatars/${userId}/${avatar}.png?size=64`;
+function avatarUrl(userId) {
   try {
     const def = Number(BigInt(userId || '0') >> 22n) % 6;
     return `https://cdn.discordapp.com/embed/avatars/${Math.abs(def)}.png`;
@@ -19,28 +19,26 @@ function relTime(iso) {
   const s = Math.floor((Date.now() - new Date(iso)) / 1000);
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   const d = Math.floor(s / 86400);
-  if (d < 30)   return `${d}j ago`;
-  return new Date(iso).toLocaleDateString();
+  if (d < 30) return `${d}j ago`;
+  return new Date(iso).toLocaleDateString('fr-FR');
 }
 
-const ROLE_COLORS = ['#ff66b2','#33b5e5','#00C851','#ffbb33','#aa66cc','#ff8800','#10b981'];
-function roleColor(role) {
-  let h = 0;
-  for (let i = 0; i < role.length; i++) h = role.charCodeAt(i) + ((h << 5) - h);
-  return ROLE_COLORS[Math.abs(h) % ROLE_COLORS.length];
-}
+const ACTION_COLORS = {
+  BAN:    '#ff4444', WARN: '#ffbb33', MUTE: '#ff66b2',
+  KICK:   '#ff8800', UNBAN: '#00C851', UNMUTE: '#33b5e5',
+  PURGE:  '#aa66cc', MASSBAN: '#cc0000',
+};
 
 const PER_PAGE = 15;
 
-export default function MembersManager({ selectedGuild }) {
+export default function MembersManager({ selectedGuild, user }) {
   const [members, setMembers]       = useState([]);
   const [guildInfo, setGuildInfo]   = useState(null);
-  const [infractions, setInfractions] = useState({});
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState(null);
   const [search, setSearch]         = useState('');
-  const [roleFilter, setRoleFilter] = useState('all');
-  const [sortBy, setSortBy]         = useState('join-desc');
+  const [typeFilter, setTypeFilter] = useState('all'); // all | targets | moderators
+  const [sortBy, setSortBy]         = useState('infractions');
   const [selected, setSelected]     = useState(null);
   const [page, setPage]             = useState(1);
 
@@ -52,43 +50,109 @@ export default function MembersManager({ selectedGuild }) {
     setLoading(true);
     setError(null);
     setSelected(null);
+    setMembers([]);
+
     try {
       const token   = localStorage.getItem('zenith_token');
       const headers = { Authorization: `Bearer ${token}` };
 
-      const [mRes, gRes, cRes, wRes] = await Promise.allSettled([
-        fetch(`/api/overview/${selectedGuild}/members`,    { headers }),
-        fetch(`/api/overview/${selectedGuild}/guild-info`, { headers }),
+      const [cRes, wRes, gRes] = await Promise.allSettled([
         fetch(`/api/moderation/${selectedGuild}/cases`,    { headers }),
         fetch(`/api/moderation/${selectedGuild}/warnings`, { headers }),
+        fetch(`/api/overview/${selectedGuild}/guild-info`, { headers }),
       ]);
 
-      // Members
-      if (mRes.status === 'fulfilled' && mRes.value.ok) {
-        setMembers(await mRes.value.json());
-      } else {
-        setError('Endpoint /api/overview/' + selectedGuild + '/members non disponible.');
-        setMembers([]);
+      const cases    = cRes.status === 'fulfilled' && cRes.value.ok    ? await cRes.value.json()    : [];
+      const warnings = wRes.status === 'fulfilled' && wRes.value.ok    ? await wRes.value.json()    : [];
+      const gInfo    = gRes.status === 'fulfilled' && gRes.value.ok    ? await gRes.value.json()    : null;
+
+      if (gInfo) setGuildInfo(gInfo);
+
+      if (!cases.length && !warnings.length) {
+        setError('Aucune donnée de modération disponible pour ce serveur.');
+        setLoading(false);
+        return;
       }
 
-      // Guild info
-      if (gRes.status === 'fulfilled' && gRes.value.ok) setGuildInfo(await gRes.value.json());
+      // Build member map from real cases + warnings
+      const map = {}; // userId → member object
 
-      // Build infraction map from cases + warnings
-      const infMap = {};
-      if (cRes.status === 'fulfilled' && cRes.value.ok) {
-        const cases = await cRes.value.json();
-        cases.forEach(c => {
-          if (c.targetId) infMap[c.targetId] = (infMap[c.targetId] || 0) + 1;
-        });
-      }
-      if (wRes.status === 'fulfilled' && wRes.value.ok) {
-        const warns = await wRes.value.json();
-        warns.forEach(w => {
-          if (w.userId) infMap[w.userId] = (infMap[w.userId] || 0) + 1;
-        });
-      }
-      setInfractions(infMap);
+      cases.forEach(c => {
+        // Target user
+        if (c.targetId) {
+          if (!map[c.targetId]) {
+            map[c.targetId] = {
+              id:          c.targetId,
+              tag:         c.targetTag || c.targetId,
+              username:    c.targetTag?.split('#')[0] || c.targetTag || c.targetId,
+              role:        'target',
+              cases:       [],
+              warnings:    [],
+              lastSeen:    c.timestamp,
+            };
+          }
+          map[c.targetId].cases.push(c);
+          if (!map[c.targetId].lastSeen || c.timestamp > map[c.targetId].lastSeen)
+            map[c.targetId].lastSeen = c.timestamp;
+        }
+
+        // Moderator
+        if (c.moderatorId && c.moderatorId !== c.targetId) {
+          if (!map[c.moderatorId]) {
+            map[c.moderatorId] = {
+              id:          c.moderatorId,
+              tag:         c.moderatorTag || c.moderatorId,
+              username:    c.moderatorTag?.split('#')[0] || c.moderatorTag || c.moderatorId,
+              role:        'moderator',
+              cases:       [],
+              warnings:    [],
+              modActions:  [],
+              lastSeen:    c.timestamp,
+            };
+          }
+          if (!map[c.moderatorId].modActions) map[c.moderatorId].modActions = [];
+          map[c.moderatorId].modActions.push(c);
+          map[c.moderatorId].role = 'moderator';
+        }
+      });
+
+      warnings.forEach(w => {
+        if (w.userId) {
+          if (!map[w.userId]) {
+            map[w.userId] = {
+              id:       w.userId,
+              tag:      w.userId,
+              username: w.userId,
+              role:     'target',
+              cases:    [],
+              warnings: [],
+              lastSeen: w.timestamp,
+            };
+          }
+          map[w.userId].warnings.push(w);
+          if (!map[w.userId].lastSeen || w.timestamp > map[w.userId].lastSeen)
+            map[w.userId].lastSeen = w.timestamp;
+        }
+        if (w.moderatorId && w.moderatorId !== w.userId) {
+          if (!map[w.moderatorId]) {
+            map[w.moderatorId] = {
+              id:         w.moderatorId,
+              tag:        w.moderatorId,
+              username:   w.moderatorId,
+              role:       'moderator',
+              cases:      [],
+              warnings:   [],
+              modActions: [],
+              lastSeen:   w.timestamp,
+            };
+          }
+          if (!map[w.moderatorId].modActions) map[w.moderatorId].modActions = [];
+          map[w.moderatorId].modActions.push(w);
+          map[w.moderatorId].role = 'moderator';
+        }
+      });
+
+      setMembers(Object.values(map));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -97,26 +161,20 @@ export default function MembersManager({ selectedGuild }) {
   };
 
   // Derived
-  const enriched = members.map(m => ({
-    ...m,
-    infractions: infractions[m.id] || 0,
-  }));
-
-  const allRoles = [...new Set(enriched.flatMap(m => m.roles || []))].sort();
-
-  const filtered = enriched
+  const filtered = members
     .filter(m => {
       const q = search.toLowerCase();
-      return (
-        (!q || (m.username||'').toLowerCase().includes(q) || (m.global_name||'').toLowerCase().includes(q) || (m.id||'').includes(q)) &&
-        (roleFilter === 'all' || (m.roles||[]).includes(roleFilter))
-      );
+      const matchSearch = !q || m.username.toLowerCase().includes(q) || m.tag.toLowerCase().includes(q) || m.id.includes(q);
+      const matchType   = typeFilter === 'all' || m.role === typeFilter;
+      return matchSearch && matchType;
     })
     .sort((a, b) => {
-      if (sortBy === 'join')          return new Date(a.joinedAt) - new Date(b.joinedAt);
-      if (sortBy === 'join-desc')     return new Date(b.joinedAt) - new Date(a.joinedAt);
-      if (sortBy === 'name')          return (a.username||'').localeCompare(b.username||'');
-      if (sortBy === 'infractions')   return b.infractions - a.infractions;
+      const aInf = a.cases.length + a.warnings.length;
+      const bInf = b.cases.length + b.warnings.length;
+      if (sortBy === 'infractions')   return bInf - aInf;
+      if (sortBy === 'modactions')    return (b.modActions?.length || 0) - (a.modActions?.length || 0);
+      if (sortBy === 'name')          return a.username.localeCompare(b.username);
+      if (sortBy === 'recent')        return new Date(b.lastSeen) - new Date(a.lastSeen);
       return 0;
     });
 
@@ -124,11 +182,14 @@ export default function MembersManager({ selectedGuild }) {
   const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   const stats = {
-    total:        enriched.length,
-    bots:         enriched.filter(m => m.bot).length,
-    infractioned: enriched.filter(m => m.infractions > 0).length,
-    uniqueRoles:  allRoles.length,
+    total:      members.length,
+    targets:    members.filter(m => m.role === 'target').length,
+    moderators: members.filter(m => m.role === 'moderator').length,
+    totalInf:   members.reduce((s, m) => s + m.cases.length + m.warnings.length, 0),
   };
+
+  // Guild info from JWT
+  const jwtGuild = user?.allowedGuilds?.find(g => g.id === selectedGuild);
 
   return (
     <div className="ov-container animate-fade-in">
@@ -137,12 +198,17 @@ export default function MembersManager({ selectedGuild }) {
         <div className="settings-page-header-text">
           <h2 className="glow-text">
             <i className="fa-solid fa-users"></i> Members Manager
-            {guildInfo?.name && <span style={{ fontSize: '0.7rem', fontWeight: 400, color: 'var(--text-secondary)', marginLeft: '10px', verticalAlign: 'middle' }}>{guildInfo.name}</span>}
+            {(guildInfo?.name || jwtGuild?.name) && (
+              <span style={{ fontSize: '0.7rem', fontWeight: 400, color: 'var(--text-secondary)', marginLeft: '10px', verticalAlign: 'middle' }}>
+                {guildInfo?.name || jwtGuild?.name}
+              </span>
+            )}
           </h2>
           <p className="subtitle">
             {guildInfo?.memberCount
-              ? `${guildInfo.memberCount.toLocaleString()} membres enregistrés sur ce serveur.`
-              : 'Gérez les membres et consultez leurs infractions.'}
+              ? `${guildInfo.memberCount.toLocaleString()} membres sur le serveur · `
+              : ''}
+            Données issues des cases et warnings réels de modération.
           </p>
         </div>
         <button className="btn-secondary" style={{ fontSize: '0.8rem' }} onClick={fetchAll}>
@@ -150,13 +216,22 @@ export default function MembersManager({ selectedGuild }) {
         </button>
       </div>
 
-      {/* KPI */}
+      {/* Source notice */}
+      <div className="glass-panel" style={{ marginBottom: '16px', padding: '11px 16px', display: 'flex', alignItems: 'center', gap: '10px', borderLeft: '3px solid #ffbb33', background: 'rgba(255,187,51,0.05)' }}>
+        <i className="fa-solid fa-circle-info" style={{ color: '#ffbb33', flexShrink: 0 }}></i>
+        <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+          Les membres affichés sont ceux présents dans l'historique de modération (cases + warnings).
+          {guildInfo?.memberCount && <strong style={{ color: '#fff' }}> Taille réelle du serveur : {guildInfo.memberCount.toLocaleString()} membres.</strong>}
+        </span>
+      </div>
+
+      {/* KPIs */}
       <div className="ov-stats-grid" style={{ marginBottom: '16px' }}>
         {[
-          { icon: 'fa-solid fa-users',        label: 'Membres chargés',   value: stats.total,        color: '#33b5e5', bg: 'rgba(51,181,229,0.12)' },
-          { icon: 'fa-solid fa-robot',         label: 'Bots',              value: stats.bots,         color: '#aa66cc', bg: 'rgba(170,102,204,0.12)' },
-          { icon: 'fa-solid fa-exclamation',   label: 'Avec infractions',  value: stats.infractioned, color: '#ff4444', bg: 'rgba(255,68,68,0.12)' },
-          { icon: 'fa-solid fa-tag',           label: 'Rôles distincts',   value: stats.uniqueRoles,  color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
+          { icon: 'fa-solid fa-users',       label: 'Utilisateurs trackés', value: stats.total,      color: '#33b5e5', bg: 'rgba(51,181,229,0.12)' },
+          { icon: 'fa-solid fa-user-xmark',  label: 'Ciblés',               value: stats.targets,    color: '#ff4444', bg: 'rgba(255,68,68,0.12)' },
+          { icon: 'fa-solid fa-user-shield', label: 'Modérateurs',          value: stats.moderators, color: '#00C851', bg: 'rgba(0,200,81,0.12)' },
+          { icon: 'fa-solid fa-gavel',       label: 'Total infractions',    value: stats.totalInf,   color: '#ff66b2', bg: 'rgba(255,102,178,0.12)' },
         ].map((s, i) => (
           <div key={s.label} className="glass-panel ov-stat-card" style={{ animationDelay: `${i * 0.05}s` }}>
             <div className="ov-stat-icon" style={{ background: s.bg, color: s.color }}><i className={s.icon}></i></div>
@@ -173,122 +248,186 @@ export default function MembersManager({ selectedGuild }) {
         <div style={{ position: 'relative', flex: '1 1 220px' }}>
           <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', fontSize: '0.8rem' }}></i>
           <input
-            type="text" placeholder="Rechercher un membre (nom, ID)…" value={search}
+            type="text" placeholder="Rechercher par nom, tag ou ID…" value={search}
             onChange={e => { setSearch(e.target.value); setPage(1); }}
             style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 10px 8px 32px', color: '#fff', fontSize: '0.85rem', boxSizing: 'border-box' }}
           />
         </div>
-        <select value={roleFilter} onChange={e => { setRoleFilter(e.target.value); setPage(1); }}
+        <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setPage(1); }}
           style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontSize: '0.85rem' }}>
-          <option value="all">Tous les rôles</option>
-          {allRoles.map(r => <option key={r} value={r}>{r}</option>)}
+          <option value="all">Tous ({members.length})</option>
+          <option value="target">Ciblés ({stats.targets})</option>
+          <option value="moderator">Modérateurs ({stats.moderators})</option>
         </select>
         <select value={sortBy} onChange={e => setSortBy(e.target.value)}
           style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontSize: '0.85rem' }}>
-          <option value="join-desc">Rejoins récemment</option>
-          <option value="join">Rejoins anciennement</option>
-          <option value="name">Nom A → Z</option>
           <option value="infractions">Infractions ↓</option>
+          <option value="modactions">Actions modération ↓</option>
+          <option value="recent">Activité récente</option>
+          <option value="name">Nom A → Z</option>
         </select>
         <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
           {filtered.length} résultat{filtered.length !== 1 ? 's' : ''}
         </span>
       </div>
 
-      {/* States */}
-      {loading && <div className="loader">Chargement des membres…</div>}
+      {loading && <div className="loader">Chargement des données…</div>}
 
       {!loading && error && (
-        <div className="glass-panel" style={{ padding: '32px', textAlign: 'center', borderLeft: '3px solid #ffbb33' }}>
-          <i className="fa-solid fa-triangle-exclamation" style={{ fontSize: '2rem', color: '#ffbb33', marginBottom: '12px', display: 'block' }}></i>
+        <div className="glass-panel" style={{ padding: '32px', textAlign: 'center', borderLeft: '3px solid #ff4444' }}>
+          <i className="fa-solid fa-circle-exclamation" style={{ fontSize: '2rem', color: '#ff4444', marginBottom: '12px', display: 'block' }}></i>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>{error}</p>
           <button className="btn-secondary" onClick={fetchAll}><i className="fa-solid fa-rotate-right"></i> Réessayer</button>
         </div>
       )}
 
-      {!loading && !error && enriched.length === 0 && (
-        <div className="glass-panel" style={{ padding: '48px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-          <i className="fa-solid fa-users-slash" style={{ fontSize: '2.5rem', opacity: 0.2, display: 'block', marginBottom: '12px' }}></i>
-          <p>Aucun membre trouvé pour ce serveur.</p>
-        </div>
-      )}
-
-      {!loading && !error && enriched.length > 0 && (
+      {!loading && !error && (
         <>
-          {/* Members table */}
+          {/* Table */}
           <div className="glass-panel" style={{ padding: 0, overflow: 'hidden', marginBottom: '16px' }}>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', color: 'var(--text-secondary)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', width: '40%' }}>Membre</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'left' }}>Rôles</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right' }}>Rejoint</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right' }}>Infractions</th>
-                    <th style={{ padding: '12px 8px', width: '40px' }}></th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left' }}>Utilisateur</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left' }}>Rôle</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'center' }}>Cases</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'center' }}>Warnings</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'center' }}>Actions mod</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right' }}>Dernière activité</th>
+                    <th style={{ padding: '12px 8px', width: '36px' }}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {paginated.map(m => (
-                    <tr
-                      key={m.id}
-                      data-testid="member-row"
-                      onClick={() => setSelected(selected?.id === m.id ? null : m)}
-                      style={{
-                        borderBottom: '1px solid rgba(255,255,255,0.04)',
-                        background: selected?.id === m.id ? 'rgba(255,102,178,0.06)' : 'transparent',
-                        cursor: 'pointer', transition: 'background 0.15s',
-                      }}
-                    >
-                      {/* Avatar + name */}
-                      <td style={{ padding: '11px 16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <img src={avatarUrl(m.id, m.avatar)} alt="" style={{ width: '34px', height: '34px', borderRadius: '50%', flexShrink: 0 }} />
-                          <div>
-                            <div style={{ fontWeight: '500', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              {m.global_name || m.username}
-                              {m.bot && <span style={{ fontSize: '0.6rem', background: '#5865F2', color: '#fff', padding: '1px 5px', borderRadius: '3px' }}>BOT</span>}
+                  {paginated.length === 0 ? (
+                    <tr><td colSpan={7} style={{ padding: '48px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                      <i className="fa-solid fa-users-slash" style={{ fontSize: '2rem', opacity: 0.2, display: 'block', marginBottom: '10px' }}></i>
+                      Aucun résultat
+                    </td></tr>
+                  ) : paginated.map(m => {
+                    const infCount = m.cases.length + m.warnings.length;
+                    const isSelected = selected?.id === m.id;
+                    return (
+                      <React.Fragment key={m.id}>
+                        <tr
+                          data-testid="member-row"
+                          onClick={() => setSelected(isSelected ? null : m)}
+                          style={{
+                            borderBottom: '1px solid rgba(255,255,255,0.04)',
+                            background: isSelected ? 'rgba(255,102,178,0.06)' : 'transparent',
+                            cursor: 'pointer', transition: 'background 0.15s',
+                          }}
+                        >
+                          {/* User */}
+                          <td style={{ padding: '11px 16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <img src={avatarUrl(m.id)} alt="" style={{ width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0 }} />
+                              <div>
+                                <div style={{ fontWeight: '500' }}>{m.username}</div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{m.id}</div>
+                              </div>
                             </div>
-                            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>@{m.username}</div>
-                          </div>
-                        </div>
-                      </td>
-                      {/* Roles */}
-                      <td style={{ padding: '11px 16px' }}>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                          {(m.roles || []).slice(0, 3).map(r => (
-                            <span key={r} style={{ fontSize: '0.68rem', padding: '2px 7px', borderRadius: '10px', background: `${roleColor(r)}18`, color: roleColor(r), border: `1px solid ${roleColor(r)}40` }}>
-                              {r}
+                          </td>
+                          {/* Role */}
+                          <td style={{ padding: '11px 16px' }}>
+                            <span style={{
+                              fontSize: '0.72rem', padding: '3px 10px', borderRadius: '10px', fontWeight: '600',
+                              background: m.role === 'moderator' ? 'rgba(0,200,81,0.12)' : 'rgba(255,68,68,0.12)',
+                              color:      m.role === 'moderator' ? '#00C851'              : '#ff4444',
+                            }}>
+                              {m.role === 'moderator' ? '🛡 Modérateur' : '⚠ Ciblé'}
                             </span>
-                          ))}
-                          {(m.roles || []).length > 3 && (
-                            <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>+{m.roles.length - 3}</span>
-                          )}
-                          {(!m.roles || m.roles.length === 0) && (
-                            <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }}>Aucun</span>
-                          )}
-                        </div>
-                      </td>
-                      {/* Joined */}
-                      <td style={{ padding: '11px 16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                        {relTime(m.joinedAt)}
-                      </td>
-                      {/* Infractions */}
-                      <td style={{ padding: '11px 16px', textAlign: 'right' }}>
-                        {m.infractions > 0 ? (
-                          <span style={{ background: 'rgba(255,68,68,0.15)', color: '#ff4444', padding: '3px 10px', borderRadius: '10px', fontWeight: '600', fontSize: '0.8rem' }}>
-                            ⚠ {m.infractions}
-                          </span>
-                        ) : (
-                          <span style={{ color: 'rgba(255,255,255,0.15)', fontSize: '0.8rem' }}>—</span>
+                          </td>
+                          {/* Cases */}
+                          <td style={{ padding: '11px 16px', textAlign: 'center' }}>
+                            {m.cases.length > 0
+                              ? <span style={{ background: 'rgba(255,102,178,0.12)', color: '#ff66b2', padding: '2px 10px', borderRadius: '10px', fontWeight: '600', fontSize: '0.8rem' }}>{m.cases.length}</span>
+                              : <span style={{ color: 'rgba(255,255,255,0.15)' }}>—</span>}
+                          </td>
+                          {/* Warnings */}
+                          <td style={{ padding: '11px 16px', textAlign: 'center' }}>
+                            {m.warnings.length > 0
+                              ? <span style={{ background: 'rgba(255,187,51,0.12)', color: '#ffbb33', padding: '2px 10px', borderRadius: '10px', fontWeight: '600', fontSize: '0.8rem' }}>{m.warnings.length}</span>
+                              : <span style={{ color: 'rgba(255,255,255,0.15)' }}>—</span>}
+                          </td>
+                          {/* Mod actions */}
+                          <td style={{ padding: '11px 16px', textAlign: 'center' }}>
+                            {m.modActions?.length > 0
+                              ? <span style={{ background: 'rgba(0,200,81,0.12)', color: '#00C851', padding: '2px 10px', borderRadius: '10px', fontWeight: '600', fontSize: '0.8rem' }}>{m.modActions.length}</span>
+                              : <span style={{ color: 'rgba(255,255,255,0.15)' }}>—</span>}
+                          </td>
+                          {/* Last seen */}
+                          <td style={{ padding: '11px 16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                            {relTime(m.lastSeen)}
+                          </td>
+                          <td style={{ padding: '11px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            <i className={`fa-solid fa-chevron-${isSelected ? 'up' : 'down'}`} style={{ fontSize: '0.7rem' }}></i>
+                          </td>
+                        </tr>
+
+                        {/* Detail row */}
+                        {isSelected && (
+                          <tr>
+                            <td colSpan={7} style={{ padding: '0', background: 'rgba(255,102,178,0.03)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                              <div style={{ padding: '16px 20px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+
+                                  {/* Recent cases */}
+                                  {m.cases.length > 0 && (
+                                    <div>
+                                      <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>
+                                        Cases ({m.cases.length})
+                                      </div>
+                                      {m.cases.slice(0, 5).map(c => (
+                                        <div key={c.caseId} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: '0.82rem' }}>
+                                          <span style={{ color: ACTION_COLORS[c.action] || '#94a3b8', fontWeight: '600', minWidth: '55px', fontSize: '0.75rem' }}>{c.action}</span>
+                                          <span style={{ flex: 1, color: 'var(--text-secondary)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.reason || '—'}</span>
+                                          <span style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', flexShrink: 0 }}>{relTime(c.timestamp)}</span>
+                                        </div>
+                                      ))}
+                                      {m.cases.length > 5 && <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '6px' }}>+{m.cases.length - 5} autres…</div>}
+                                    </div>
+                                  )}
+
+                                  {/* Recent warnings */}
+                                  {m.warnings.length > 0 && (
+                                    <div>
+                                      <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>
+                                        Warnings ({m.warnings.length})
+                                      </div>
+                                      {m.warnings.slice(0, 5).map(w => (
+                                        <div key={w._id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: '0.82rem' }}>
+                                          <span style={{ color: '#ffbb33', fontWeight: '600', minWidth: '55px', fontSize: '0.75rem' }}>WARN</span>
+                                          <span style={{ flex: 1, color: 'var(--text-secondary)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.reason || '—'}</span>
+                                          <span style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', flexShrink: 0 }}>{relTime(w.timestamp)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {/* Mod actions */}
+                                  {m.modActions?.length > 0 && (
+                                    <div>
+                                      <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>
+                                        Actions effectuées ({m.modActions.length})
+                                      </div>
+                                      {m.modActions.slice(0, 5).map((a, i) => (
+                                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: '0.82rem' }}>
+                                          <span style={{ color: ACTION_COLORS[a.action] || '#94a3b8', fontWeight: '600', minWidth: '55px', fontSize: '0.75rem' }}>{a.action}</span>
+                                          <span style={{ flex: 1, color: '#ccc', fontSize: '0.75rem' }}>{a.targetTag || a.userId || '—'}</span>
+                                          <span style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', flexShrink: 0 }}>{relTime(a.timestamp)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      {/* Expand */}
-                      <td style={{ padding: '11px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                        <i className={`fa-solid fa-chevron-${selected?.id === m.id ? 'up' : 'down'}`} style={{ fontSize: '0.7rem' }}></i>
-                      </td>
-                    </tr>
-                  ))}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -307,76 +446,22 @@ export default function MembersManager({ selectedGuild }) {
                   acc.push(p);
                   return acc;
                 }, [])
-                .map((p, i) =>
-                  p === '…' ? (
-                    <span key={`e${i}`} style={{ color: 'var(--text-secondary)', padding: '0 4px' }}>…</span>
-                  ) : (
-                    <button key={p} className={p === page ? 'btn-primary' : 'btn-secondary'} style={{ fontSize: '0.8rem', padding: '5px 12px', minWidth: '36px' }} onClick={() => setPage(p)}>{p}</button>
-                  )
+                .map((p, i) => p === '…'
+                  ? <span key={`e${i}`} style={{ color: 'var(--text-secondary)', padding: '0 4px' }}>…</span>
+                  : <button key={p} className={p === page ? 'btn-primary' : 'btn-secondary'} style={{ fontSize: '0.8rem', padding: '5px 12px', minWidth: '36px' }} onClick={() => setPage(p)}>{p}</button>
                 )}
               <button className="btn-secondary" style={{ fontSize: '0.8rem', padding: '5px 12px' }} disabled={page === pages} onClick={() => setPage(p => p + 1)}>
                 <i className="fa-solid fa-chevron-right"></i>
               </button>
               <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginLeft: '8px' }}>
-                Page {page}/{pages} — {filtered.length} membres
+                Page {page}/{pages} · {filtered.length} utilisateurs
               </span>
-            </div>
-          )}
-
-          {/* Detail panel */}
-          {selected && (
-            <div className="glass-panel animate-fade-in" style={{ borderLeft: '3px solid var(--premium-pink)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <img src={avatarUrl(selected.id, selected.avatar)} alt="" style={{ width: '60px', height: '60px', borderRadius: '50%', border: '2px solid var(--premium-pink)' }} />
-                  <div>
-                    <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {selected.global_name || selected.username}
-                      {selected.bot && <span style={{ fontSize: '0.65rem', background: '#5865F2', color: '#fff', padding: '2px 7px', borderRadius: '4px' }}>BOT</span>}
-                    </h3>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>@{selected.username}</div>
-                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px', fontFamily: 'monospace' }}>{selected.id}</div>
-                  </div>
-                </div>
-                <button className="btn-secondary" style={{ fontSize: '0.8rem', padding: '5px 10px' }} onClick={() => setSelected(null)}>
-                  <i className="fa-solid fa-xmark"></i>
-                </button>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px', marginBottom: '16px' }}>
-                {[
-                  { label: 'Nom d\'affichage', value: selected.global_name || selected.username },
-                  { label: 'Username',          value: `@${selected.username}` },
-                  { label: 'Discord ID',        value: selected.id },
-                  { label: 'Rejoint le',        value: selected.joinedAt ? new Date(selected.joinedAt).toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' }) : '—' },
-                  { label: 'Infractions',       value: selected.infractions || 0, highlight: selected.infractions > 0 },
-                  { label: 'Bot',               value: selected.bot ? 'Oui' : 'Non' },
-                ].map(f => (
-                  <div key={f.label} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px 14px' }}>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>{f.label}</div>
-                    <div style={{ fontWeight: '600', fontSize: '0.88rem', color: f.highlight ? '#ff4444' : '#fff', wordBreak: 'break-all' }}>{f.value}</div>
-                  </div>
-                ))}
-              </div>
-
-              {selected.roles?.length > 0 && (
-                <div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rôles ({selected.roles.length})</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                    {selected.roles.map(r => (
-                      <span key={r} style={{ fontSize: '0.8rem', padding: '4px 12px', borderRadius: '12px', background: `${roleColor(r)}18`, color: roleColor(r), border: `1px solid ${roleColor(r)}40`, fontWeight: '500' }}>
-                        {r}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </>
       )}
 
-      <style>{`@media(max-width:768px){table td:nth-child(2),table th:nth-child(2){display:none}}`}</style>
+      <style>{`@media(max-width:768px){table td:nth-child(3),table td:nth-child(5),table th:nth-child(3),table th:nth-child(5){display:none}}`}</style>
     </div>
   );
 }

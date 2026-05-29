@@ -213,7 +213,7 @@ export default function Dashboard() {
               {activePage === 'account'       && <AccountManager user={user} />}
               {activePage === 'analytics'     && <Analytics selectedGuild={selectedGuild} />}
               {activePage === 'notifications' && <Notifications selectedGuild={selectedGuild} />}
-              {activePage === 'members'       && <MembersManager selectedGuild={selectedGuild} />}
+              {activePage === 'members'       && <MembersManager selectedGuild={selectedGuild} user={user} />}
             </>
           )}
 
