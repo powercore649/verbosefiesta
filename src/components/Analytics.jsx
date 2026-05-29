@@ -1,145 +1,217 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Chart from 'chart.js/auto';
 
-const COLORS = {
-  pink:   '#ff66b2',
-  blue:   '#33b5e5',
-  green:  '#00C851',
-  orange: '#ff8800',
-  purple: '#aa66cc',
-  red:    '#ff4444',
-  yellow: '#ffbb33',
+// Matches real API: /api/moderation/${guild}/stats
+// Real fields: totalCases, last24h, totalWarnings, healthScore, activeProtectionLayers,
+//              dailyData[]{date, count}, actionBreakdown{BAN,WARN,...},
+//              recentActivity[]{_id, action, targetTag, targetId, moderatorTag, timestamp, reason},
+//              topModerators[]{moderatorId, moderatorTag, count},
+//              topTargets[]{userId, targetTag, count}
+// Real fields: /api/overview/${guild}/guild-info → memberCount, channelCount, name, icon
+
+const ACTION_COLORS = {
+  WARN:    { color: '#ffbb33', bg: 'rgba(255,187,51,0.15)' },
+  BAN:     { color: '#ff4444', bg: 'rgba(255,68,68,0.15)' },
+  MUTE:    { color: '#ff66b2', bg: 'rgba(255,102,178,0.15)' },
+  KICK:    { color: '#ff8800', bg: 'rgba(255,136,0,0.15)' },
+  UNMUTE:  { color: '#00C851', bg: 'rgba(0,200,81,0.15)' },
+  UNBAN:   { color: '#33b5e5', bg: 'rgba(51,181,229,0.15)' },
+  PURGE:   { color: '#aa66cc', bg: 'rgba(170,102,204,0.15)' },
+  MASSBAN: { color: '#cc0000', bg: 'rgba(204,0,0,0.15)' },
 };
 
-function StatCard({ icon, label, value, sub, color = COLORS.pink, delay = 0 }) {
-  return (
-    <div className="glass-panel ov-stat-card" style={{ animationDelay: `${delay}s` }}>
-      <div className="ov-stat-icon" style={{ background: `${color}22`, color }}>
-        <i className={icon}></i>
-      </div>
-      <div className="ov-stat-info">
-        <span className="ov-stat-label">{label}</span>
-        <span className="ov-stat-value">{value ?? '—'}</span>
-        {sub && <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '2px' }}>{sub}</span>}
-      </div>
-    </div>
-  );
+function getHealthColor(score) {
+  if (score >= 80) return '#00C851';
+  if (score >= 50) return '#ffbb33';
+  return '#ff4444';
+}
+
+function relTime(iso) {
+  if (!iso) return '—';
+  const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (s < 60)    return `${s}s ago`;
+  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return new Date(iso).toLocaleDateString();
 }
 
 export default function Analytics({ selectedGuild }) {
-  const [stats, setStats]       = useState(null);
-  const [members, setMembers]   = useState(null);
-  const [loading, setLoading]   = useState(true);
-  const [range, setRange]       = useState('7d');
+  const [stats, setStats]         = useState(null);
+  const [guildInfo, setGuildInfo] = useState(null);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState(null);
+  const [range, setRange]         = useState('7d');
 
-  const barRef    = useRef(null);
   const lineRef   = useRef(null);
   const donutRef  = useRef(null);
-  const barInst   = useRef(null);
+  const barRef    = useRef(null);
   const lineInst  = useRef(null);
   const donutInst = useRef(null);
+  const barInst   = useRef(null);
 
   useEffect(() => {
     if (selectedGuild) fetchData();
-  }, [selectedGuild, range]);
+  }, [selectedGuild]);
 
   useEffect(() => () => {
-    [barInst, lineInst, donutInst].forEach(r => r.current?.destroy());
+    lineInst.current?.destroy();
+    donutInst.current?.destroy();
+    barInst.current?.destroy();
   }, []);
+
+  useEffect(() => {
+    if (!loading && stats) {
+      buildLineChart();
+      buildDonutChart();
+      buildBarChart();
+    }
+  }, [loading, stats, range]);
 
   const fetchData = async () => {
     setLoading(true);
+    setError(null);
     try {
       const token   = localStorage.getItem('zenith_token');
       const headers = { Authorization: `Bearer ${token}` };
-      const [sRes, mRes] = await Promise.allSettled([
+      const [sRes, gRes] = await Promise.all([
         fetch(`/api/moderation/${selectedGuild}/stats`, { headers }),
         fetch(`/api/overview/${selectedGuild}/guild-info`, { headers }),
       ]);
-      if (sRes.status === 'fulfilled' && sRes.value.ok) setStats(await sRes.value.json());
-      if (mRes.status === 'fulfilled' && mRes.value.ok) setMembers(await mRes.value.json());
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+      if (!sRes.ok) throw new Error(`Stats API ${sRes.status}`);
+      setStats(await sRes.json());
+      if (gRes.ok) setGuildInfo(await gRes.json());
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Build charts after data loads
-  useEffect(() => {
-    if (loading || !stats) return;
-    buildBarChart();
-    buildLineChart();
-    buildDonutChart();
-  }, [loading, stats, range]);
-
-  const buildBarChart = () => {
-    if (!barRef.current) return;
-    barInst.current?.destroy();
-    const actionCounts = stats?.actionCounts || {};
-    const labels = Object.keys(actionCounts).length ? Object.keys(actionCounts) : ['WARN','BAN','MUTE','KICK','UNMUTE'];
-    const data   = labels.map(l => actionCounts[l] || Math.floor(Math.random() * 40));
-    const colors = [COLORS.yellow, COLORS.red, COLORS.pink, COLORS.orange, COLORS.green, COLORS.blue, COLORS.purple];
-    barInst.current = new Chart(barRef.current, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{ label: 'Actions', data, backgroundColor: labels.map((_, i) => colors[i % colors.length] + 'aa'), borderColor: labels.map((_, i) => colors[i % colors.length]), borderWidth: 1, borderRadius: 6 }],
-      },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b8fa8' } }, y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b8fa8' } } } },
-    });
+  // Filter dailyData to selected range
+  const filteredDaily = () => {
+    if (!stats?.dailyData) return [];
+    const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
+    return stats.dailyData.slice(-days);
   };
 
   const buildLineChart = () => {
     if (!lineRef.current) return;
     lineInst.current?.destroy();
-    const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
-    const labels = Array.from({ length: days }, (_, i) => {
-      const d = new Date(); d.setDate(d.getDate() - (days - 1 - i));
-      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    });
-    const daily = stats?.dailyActions || {};
-    const data  = labels.map((_, i) => {
-      const key = Object.keys(daily)[i];
-      return daily[key] || Math.floor(Math.random() * 15 + 2);
-    });
+    const data = filteredDaily();
+    if (!data.length) return;
     lineInst.current = new Chart(lineRef.current, {
       type: 'line',
       data: {
-        labels,
+        labels: data.map(p => {
+          const d = new Date(`${p.date}T00:00:00`);
+          return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        }),
         datasets: [{
-          label: 'Actions/day', data,
-          borderColor: COLORS.pink, backgroundColor: 'rgba(255,102,178,0.08)',
-          tension: 0.4, fill: true, pointBackgroundColor: COLORS.pink, pointRadius: 3,
+          label: 'Actions/jour',
+          data: data.map(p => p.count),
+          borderColor: '#ff66b2',
+          backgroundColor: (ctx) => {
+            const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, 280);
+            g.addColorStop(0, 'rgba(255,102,178,0.3)');
+            g.addColorStop(1, 'rgba(255,102,178,0.0)');
+            return g;
+          },
+          tension: 0.4, fill: true,
+          pointBackgroundColor: '#ff66b2', pointRadius: 3,
         }],
       },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#8b8fa8', maxTicksLimit: 8 } }, y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#8b8fa8' } } } },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#8b8fa8', maxTicksLimit: 10 } },
+          y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#8b8fa8' }, beginAtZero: true },
+        },
+      },
     });
   };
 
   const buildDonutChart = () => {
-    if (!donutRef.current) return;
+    if (!donutRef.current || !stats?.actionBreakdown) return;
     donutInst.current?.destroy();
-    const actionCounts = stats?.actionCounts || {};
-    const labels = Object.keys(actionCounts).length ? Object.keys(actionCounts) : ['WARN','BAN','MUTE','KICK'];
-    const data   = labels.map(l => actionCounts[l] || Math.floor(Math.random() * 30 + 5));
+    const entries = Object.entries(stats.actionBreakdown).filter(([, v]) => v > 0);
+    if (!entries.length) return;
     donutInst.current = new Chart(donutRef.current, {
       type: 'doughnut',
-      data: { labels, datasets: [{ data, backgroundColor: [COLORS.yellow+'cc', COLORS.red+'cc', COLORS.pink+'cc', COLORS.orange+'cc', COLORS.green+'cc'], borderWidth: 0 }] },
-      options: { responsive: true, maintainAspectRatio: false, cutout: '72%', plugins: { legend: { position: 'right', labels: { color: '#8b8fa8', font: { size: 11 }, padding: 12 } } } },
+      data: {
+        labels: entries.map(([k]) => k),
+        datasets: [{
+          data: entries.map(([, v]) => v),
+          backgroundColor: entries.map(([k]) => (ACTION_COLORS[k]?.color || '#64748b') + 'cc'),
+          borderColor: 'rgba(10,10,12,0.8)', borderWidth: 3, hoverOffset: 8,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '70%',
+        plugins: { legend: { position: 'right', labels: { color: '#8b8fa8', font: { size: 11 }, padding: 12 } } },
+      },
     });
   };
 
-  const total     = stats ? Object.values(stats.actionCounts || {}).reduce((a, b) => a + b, 0) : null;
-  const topMod    = stats?.topModerators?.[0];
-  const topAction = stats?.actionCounts ? Object.entries(stats.actionCounts).sort((a,b)=>b[1]-a[1])[0] : null;
+  const buildBarChart = () => {
+    if (!barRef.current || !stats?.actionBreakdown) return;
+    barInst.current?.destroy();
+    const entries = Object.entries(stats.actionBreakdown).filter(([, v]) => v > 0);
+    if (!entries.length) return;
+    barInst.current = new Chart(barRef.current, {
+      type: 'bar',
+      data: {
+        labels: entries.map(([k]) => k),
+        datasets: [{
+          label: 'Nombre d\'actions',
+          data: entries.map(([, v]) => v),
+          backgroundColor: entries.map(([k]) => (ACTION_COLORS[k]?.color || '#64748b') + 'aa'),
+          borderColor:     entries.map(([k]) => ACTION_COLORS[k]?.color || '#64748b'),
+          borderWidth: 1, borderRadius: 6,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#8b8fa8' } },
+          y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#8b8fa8' }, beginAtZero: true },
+        },
+      },
+    });
+  };
+
+  if (loading) return <div className="loader">Chargement des statistiques…</div>;
+
+  if (error || !stats) return (
+    <div className="ov-container animate-fade-in">
+      <div className="glass-panel" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+        <i className="fa-solid fa-circle-exclamation" style={{ fontSize: '2rem', color: '#ff4444', marginBottom: '12px', display: 'block' }}></i>
+        <p>Impossible de charger les statistiques. {error}</p>
+        <button className="btn-secondary" style={{ marginTop: '16px' }} onClick={fetchData}>
+          <i className="fa-solid fa-rotate-right"></i> Réessayer
+        </button>
+      </div>
+    </div>
+  );
+
+  const topAction = stats.actionBreakdown
+    ? Object.entries(stats.actionBreakdown).sort((a, b) => b[1] - a[1])[0]
+    : null;
+  const healthColor = getHealthColor(stats.healthScore || 0);
 
   return (
     <div className="ov-container animate-fade-in">
+      {/* Header */}
       <div className="settings-page-header">
         <div className="settings-page-header-text">
           <h2 className="glow-text"><i className="fa-solid fa-chart-line"></i> Analytics</h2>
-          <p className="subtitle">Statistiques avancées de modération pour ce serveur.</p>
+          <p className="subtitle">
+            Statistiques réelles de modération — {guildInfo?.name || 'ce serveur'}.
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          {['7d','30d','90d'].map(r => (
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {['7d', '30d', '90d'].map(r => (
             <button
               key={r}
               className={range === r ? 'btn-primary' : 'btn-secondary'}
@@ -147,90 +219,183 @@ export default function Analytics({ selectedGuild }) {
               onClick={() => setRange(r)}
             >{r}</button>
           ))}
+          <button className="btn-secondary" style={{ fontSize: '0.8rem', padding: '6px 12px' }} onClick={fetchData}>
+            <i className="fa-solid fa-rotate-right"></i>
+          </button>
         </div>
       </div>
 
-      {loading ? (
-        <div className="loader">Chargement des statistiques…</div>
-      ) : (
-        <>
-          {/* KPI Cards */}
-          <div className="ov-stats-grid">
-            <StatCard icon="fa-solid fa-gavel"          label="Total actions"      value={total ?? '—'}                                          color={COLORS.pink}   delay={0.00} />
-            <StatCard icon="fa-solid fa-user-shield"    label="Membres"            value={members?.member_count ?? members?.memberCount ?? '—'}  color={COLORS.blue}   delay={0.05} />
-            <StatCard icon="fa-solid fa-bolt"           label="Action principale"  value={topAction?.[0] ?? '—'}  sub={topAction ? `${topAction[1]} fois` : null} color={COLORS.orange} delay={0.10} />
-            <StatCard icon="fa-solid fa-crown"          label="Top modérateur"     value={topMod?.username ?? topMod?.moderator ?? '—'}           color={COLORS.yellow} delay={0.15} />
-            <StatCard icon="fa-solid fa-ban"            label="Bans"               value={stats?.actionCounts?.BAN ?? '—'}                        color={COLORS.red}    delay={0.20} />
-            <StatCard icon="fa-solid fa-triangle-exclamation" label="Warns"        value={stats?.actionCounts?.WARN ?? '—'}                       color={COLORS.purple} delay={0.25} />
-          </div>
-
-          {/* Charts Row */}
-          <div className="ov-charts-row" style={{ gap: '16px', marginTop: '20px' }}>
-            {/* Line chart */}
-            <div className="glass-panel ov-chart-card" style={{ flex: 2 }}>
-              <div className="ov-chart-header">
-                <h3><i className="fa-solid fa-chart-line" style={{ color: COLORS.pink }}></i> Activité ({range})</h3>
-              </div>
-              <div style={{ height: '220px', position: 'relative' }}>
-                <canvas ref={lineRef}></canvas>
-              </div>
+      {/* KPI Cards */}
+      <div className="ov-stats-grid">
+        {[
+          { icon: 'fa-solid fa-gavel',             label: 'Total cases',      value: stats.totalCases ?? '—',           color: '#ff66b2', bg: 'rgba(255,102,178,0.12)' },
+          { icon: 'fa-solid fa-bolt',               label: 'Actif (24h)',      value: stats.last24h ?? '—',              color: '#ffbb33', bg: 'rgba(255,187,51,0.12)'  },
+          { icon: 'fa-solid fa-triangle-exclamation',label: 'Warnings',        value: stats.totalWarnings ?? '—',        color: '#ff8800', bg: 'rgba(255,136,0,0.12)'   },
+          { icon: 'fa-solid fa-heart-pulse',        label: 'Health Score',     value: stats.healthScore != null ? `${stats.healthScore}%` : '—', color: healthColor, bg: `${healthColor}1a` },
+          { icon: 'fa-solid fa-users',              label: 'Membres',          value: guildInfo?.memberCount ?? '—',     color: '#33b5e5', bg: 'rgba(51,181,229,0.12)'  },
+          { icon: 'fa-solid fa-hashtag',            label: 'Salons',           value: guildInfo?.channelCount ?? '—',    color: '#aa66cc', bg: 'rgba(170,102,204,0.12)' },
+          { icon: 'fa-solid fa-shield-halved',      label: 'Couches de protection', value: stats.activeProtectionLayers ?? 0, color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
+          { icon: 'fa-solid fa-bolt-lightning',     label: 'Action principale', value: topAction?.[0] ?? '—',           color: ACTION_COLORS[topAction?.[0]]?.color || '#ff66b2', bg: ACTION_COLORS[topAction?.[0]]?.bg || 'rgba(255,102,178,0.12)' },
+        ].map((s, i) => (
+          <div key={s.label} className="glass-panel ov-stat-card" style={{ animationDelay: `${i * 0.05}s` }}>
+            <div className="ov-stat-icon" style={{ background: s.bg, color: s.color }}>
+              <i className={s.icon}></i>
             </div>
-
-            {/* Donut chart */}
-            <div className="glass-panel ov-chart-card ov-chart-doughnut" style={{ flex: 1 }}>
-              <div className="ov-chart-header">
-                <h3><i className="fa-solid fa-chart-pie" style={{ color: COLORS.pink }}></i> Répartition</h3>
-              </div>
-              <div style={{ height: '220px', position: 'relative' }}>
-                <canvas ref={donutRef}></canvas>
-              </div>
+            <div className="ov-stat-info">
+              <span className="ov-stat-label">{s.label}</span>
+              <span className="ov-stat-value">{s.value}</span>
             </div>
           </div>
+        ))}
+      </div>
 
-          {/* Bar chart */}
-          <div className="glass-panel" style={{ marginTop: '16px' }}>
-            <div className="ov-chart-header">
-              <h3><i className="fa-solid fa-chart-bar" style={{ color: COLORS.pink }}></i> Actions par type</h3>
-            </div>
-            <div style={{ height: '220px', position: 'relative' }}>
-              <canvas ref={barRef}></canvas>
-            </div>
+      {/* Line + Donut */}
+      <div className="ov-charts-row" style={{ gap: '16px', marginTop: '20px' }}>
+        <div className="glass-panel ov-chart-card" style={{ flex: 2 }}>
+          <div className="ov-chart-header">
+            <h3><i className="fa-solid fa-chart-line" style={{ color: '#ff66b2' }}></i> Activité ({range})</h3>
           </div>
-
-          {/* Top Moderators Table */}
-          {stats?.topModerators?.length > 0 && (
-            <div className="glass-panel" style={{ marginTop: '16px' }}>
-              <h3 style={{ marginBottom: '16px' }}><i className="fa-solid fa-ranking-star" style={{ color: COLORS.pink }}></i> Top Modérateurs</h3>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', color: 'var(--text-secondary)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      <th style={{ padding: '8px 12px', textAlign: 'left' }}>#</th>
-                      <th style={{ padding: '8px 12px', textAlign: 'left' }}>Modérateur</th>
-                      <th style={{ padding: '8px 12px', textAlign: 'right' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {stats.topModerators.map((mod, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                        <td style={{ padding: '10px 12px', color: i === 0 ? COLORS.yellow : 'var(--text-secondary)' }}>
-                          {i === 0 ? <i className="fa-solid fa-crown"></i> : `#${i + 1}`}
-                        </td>
-                        <td style={{ padding: '10px 12px', fontWeight: '500' }}>{mod.username || mod.moderator || mod.moderatorId}</td>
-                        <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                          <span style={{ background: 'rgba(255,102,178,0.12)', color: COLORS.pink, padding: '3px 10px', borderRadius: '10px', fontWeight: '600' }}>
-                            {mod.count ?? mod.actions ?? '—'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          {filteredDaily().length > 0
+            ? <div style={{ height: '220px', position: 'relative' }}><canvas ref={lineRef}></canvas></div>
+            : <div style={{ height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', flexDirection: 'column', gap: '8px' }}>
+                <i className="fa-solid fa-chart-line" style={{ fontSize: '2rem', opacity: 0.2 }}></i>
+                <span>Pas encore de données sur cette période</span>
               </div>
+          }
+        </div>
+        <div className="glass-panel ov-chart-card ov-chart-doughnut" style={{ flex: 1 }}>
+          <div className="ov-chart-header">
+            <h3><i className="fa-solid fa-chart-pie" style={{ color: '#ff66b2' }}></i> Répartition</h3>
+          </div>
+          {Object.keys(stats.actionBreakdown || {}).length > 0
+            ? <div style={{ height: '220px', position: 'relative' }}><canvas ref={donutRef}></canvas></div>
+            : <div style={{ height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', flexDirection: 'column', gap: '8px' }}>
+                <i className="fa-solid fa-chart-pie" style={{ fontSize: '2rem', opacity: 0.2 }}></i>
+                <span>Aucune action enregistrée</span>
+              </div>
+          }
+        </div>
+      </div>
+
+      {/* Bar chart */}
+      {Object.keys(stats.actionBreakdown || {}).length > 0 && (
+        <div className="glass-panel" style={{ marginTop: '16px' }}>
+          <div className="ov-chart-header">
+            <h3><i className="fa-solid fa-chart-bar" style={{ color: '#ff66b2' }}></i> Actions par type</h3>
+          </div>
+          <div style={{ height: '200px', position: 'relative' }}>
+            <canvas ref={barRef}></canvas>
+          </div>
+        </div>
+      )}
+
+      {/* Recent Activity + Top Moderators */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '16px' }}>
+        {/* Recent Activity */}
+        <div className="glass-panel">
+          <h3 style={{ marginBottom: '14px' }}>
+            <i className="fa-solid fa-clock-rotate-left" style={{ color: '#ff66b2' }}></i> Activité récente
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginLeft: '8px', fontWeight: 400 }}>
+              {stats.recentActivity?.length || 0} entrée{stats.recentActivity?.length !== 1 ? 's' : ''}
+            </span>
+          </h3>
+          <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+            {stats.recentActivity?.length > 0 ? stats.recentActivity.map(entry => {
+              const meta = ACTION_COLORS[entry.action] || { color: '#94a3b8', bg: 'rgba(255,255,255,0.05)' };
+              return (
+                <div key={entry._id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: meta.bg, color: meta.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '0.8rem' }}>
+                    <i className={entry.action === 'BAN' ? 'fa-solid fa-hammer' : entry.action === 'WARN' ? 'fa-solid fa-triangle-exclamation' : entry.action === 'MUTE' ? 'fa-solid fa-volume-xmark' : entry.action === 'KICK' ? 'fa-solid fa-right-from-bracket' : 'fa-solid fa-shield'}></i>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: '500' }}>
+                      <span style={{ color: meta.color }}>{entry.action}</span>
+                      {' '}<span style={{ color: '#ccc' }}>{entry.targetTag}</span>
+                    </div>
+                    {entry.reason && <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.reason}</div>}
+                  </div>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', flexShrink: 0 }}>{relTime(entry.timestamp)}</span>
+                </div>
+              );
+            }) : (
+              <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                <i className="fa-solid fa-inbox" style={{ fontSize: '1.5rem', opacity: 0.2, display: 'block', marginBottom: '8px' }}></i>
+                Aucune activité récente
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Top Moderators */}
+        <div className="glass-panel">
+          <h3 style={{ marginBottom: '14px' }}>
+            <i className="fa-solid fa-ranking-star" style={{ color: '#ff66b2' }}></i> Top Modérateurs
+          </h3>
+          {stats.topModerators?.length > 0 ? (
+            <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+              {stats.topModerators.map((mod, i) => (
+                <div key={mod.moderatorId} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: i === 0 ? 'rgba(255,187,51,0.15)' : 'rgba(255,255,255,0.05)', color: i === 0 ? '#ffbb33' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', flexShrink: 0, fontWeight: '700' }}>
+                    {i === 0 ? <i className="fa-solid fa-crown"></i> : `#${i + 1}`}
+                  </div>
+                  <span style={{ flex: 1, fontWeight: '500', fontSize: '0.88rem' }}>{mod.moderatorTag}</span>
+                  <span style={{ background: 'rgba(255,102,178,0.12)', color: '#ff66b2', padding: '3px 10px', borderRadius: '10px', fontWeight: '600', fontSize: '0.8rem', flexShrink: 0 }}>
+                    {mod.count} action{mod.count !== 1 ? 's' : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-secondary)' }}>
+              <i className="fa-solid fa-user-group" style={{ fontSize: '1.5rem', opacity: 0.2, display: 'block', marginBottom: '8px' }}></i>
+              Aucun modérateur enregistré
             </div>
           )}
-        </>
+
+          {/* Top Targets */}
+          {stats.topTargets?.length > 0 && (
+            <>
+              <h3 style={{ margin: '20px 0 14px' }}>
+                <i className="fa-solid fa-user-slash" style={{ color: '#ff4444' }}></i> Utilisateurs ciblés
+              </h3>
+              {stats.topTargets.map((t, i) => (
+                <div key={t.userId} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(255,68,68,0.1)', color: '#ff4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', flexShrink: 0, fontWeight: '700' }}>
+                    {i + 1}
+                  </div>
+                  <span style={{ flex: 1, fontWeight: '500', fontSize: '0.88rem' }}>{t.targetTag}</span>
+                  <span style={{ background: 'rgba(255,68,68,0.1)', color: '#ff4444', padding: '3px 10px', borderRadius: '10px', fontWeight: '600', fontSize: '0.8rem', flexShrink: 0 }}>
+                    {t.count} cas
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Config Coverage */}
+      {stats.configCoverage && (
+        <div className="glass-panel" style={{ marginTop: '16px', borderLeft: '3px solid #10b981' }}>
+          <h3 style={{ marginBottom: '14px' }}><i className="fa-solid fa-shield-halved" style={{ color: '#10b981' }}></i> Couverture de protection</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px' }}>
+            {[
+              { label: 'Filtres statiques', value: `${stats.configCoverage.staticEnabled}/${stats.configCoverage.staticTotal}` },
+              { label: 'Filtres IA', value: `${stats.configCoverage.aiEnabled}/${stats.configCoverage.aiTotal}` },
+              { label: 'Mots bloqués', value: stats.configCoverage.wordsCount },
+              { label: 'Domaines autorisés', value: stats.configCoverage.whitelistedDomains },
+              { label: 'Actions auto', value: stats.configCoverage.automationsEnabled ? 'Oui' : 'Non' },
+            ].map(f => (
+              <div key={f.label} style={{ background: 'rgba(16,185,129,0.06)', borderRadius: '8px', padding: '10px 14px' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>{f.label}</div>
+                <div style={{ fontWeight: '600', color: '#10b981' }}>{f.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
+
+      <style>{`@media(max-width:768px){.ov-charts-row{flex-direction:column!important} div[style*="grid-template-columns: 1fr 1fr"]{grid-template-columns:1fr!important}}`}</style>
     </div>
   );
 }
