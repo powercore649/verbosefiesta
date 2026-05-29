@@ -181,15 +181,15 @@ export default function Analytics({ selectedGuild }) {
     });
   };
 
-  if (loading) return <div className="loader">Chargement des statistiques…</div>;
+  if (loading) return <div className="loader">Loading statistics…</div>;
 
   if (error || !stats) return (
     <div className="ov-container animate-fade-in">
       <div className="glass-panel" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
         <i className="fa-solid fa-circle-exclamation" style={{ fontSize: '2rem', color: '#ff4444', marginBottom: '12px', display: 'block' }}></i>
-        <p>Impossible de charger les statistiques. {error}</p>
+        <p>Failed to load statistics. {error}</p>
         <button className="btn-secondary" style={{ marginTop: '16px' }} onClick={fetchData}>
-          <i className="fa-solid fa-rotate-right"></i> Réessayer
+          <i className="fa-solid fa-rotate-right"></i> Retry
         </button>
       </div>
     </div>
@@ -207,7 +207,7 @@ export default function Analytics({ selectedGuild }) {
         <div className="settings-page-header-text">
           <h2 className="glow-text"><i className="fa-solid fa-chart-line"></i> Analytics</h2>
           <p className="subtitle">
-            Statistiques réelles de modération — {guildInfo?.name || 'ce serveur'}.
+            Real moderation statistics — {guildInfo?.name || 'this server'}.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -229,13 +229,13 @@ export default function Analytics({ selectedGuild }) {
       <div className="ov-stats-grid">
         {[
           { icon: 'fa-solid fa-gavel',             label: 'Total cases',      value: stats.totalCases ?? '—',           color: '#ff66b2', bg: 'rgba(255,102,178,0.12)' },
-          { icon: 'fa-solid fa-bolt',               label: 'Actif (24h)',      value: stats.last24h ?? '—',              color: '#ffbb33', bg: 'rgba(255,187,51,0.12)'  },
+          { icon: 'fa-solid fa-bolt',               label: 'Active (24h)',      value: stats.last24h ?? '—',              color: '#ffbb33', bg: 'rgba(255,187,51,0.12)'  },
           { icon: 'fa-solid fa-triangle-exclamation',label: 'Warnings',        value: stats.totalWarnings ?? '—',        color: '#ff8800', bg: 'rgba(255,136,0,0.12)'   },
           { icon: 'fa-solid fa-heart-pulse',        label: 'Health Score',     value: stats.healthScore != null ? `${stats.healthScore}%` : '—', color: healthColor, bg: `${healthColor}1a` },
-          { icon: 'fa-solid fa-users',              label: 'Membres',          value: guildInfo?.memberCount ?? '—',     color: '#33b5e5', bg: 'rgba(51,181,229,0.12)'  },
-          { icon: 'fa-solid fa-hashtag',            label: 'Salons',           value: guildInfo?.channelCount ?? '—',    color: '#aa66cc', bg: 'rgba(170,102,204,0.12)' },
-          { icon: 'fa-solid fa-shield-halved',      label: 'Couches de protection', value: stats.activeProtectionLayers ?? 0, color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
-          { icon: 'fa-solid fa-bolt-lightning',     label: 'Action principale', value: topAction?.[0] ?? '—',           color: ACTION_COLORS[topAction?.[0]]?.color || '#ff66b2', bg: ACTION_COLORS[topAction?.[0]]?.bg || 'rgba(255,102,178,0.12)' },
+          { icon: 'fa-solid fa-users',              label: 'Members',          value: guildInfo?.memberCount ?? '—',     color: '#33b5e5', bg: 'rgba(51,181,229,0.12)'  },
+          { icon: 'fa-solid fa-hashtag',            label: 'Channels',           value: guildInfo?.channelCount ?? '—',    color: '#aa66cc', bg: 'rgba(170,102,204,0.12)' },
+          { icon: 'fa-solid fa-shield-halved',      label: 'Protection layers', value: stats.activeProtectionLayers ?? 0, color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
+          { icon: 'fa-solid fa-bolt-lightning',     label: 'Top action', value: topAction?.[0] ?? '—',           color: ACTION_COLORS[topAction?.[0]]?.color || '#ff66b2', bg: ACTION_COLORS[topAction?.[0]]?.bg || 'rgba(255,102,178,0.12)' },
         ].map((s, i) => (
           <div key={s.label} className="glass-panel ov-stat-card" style={{ animationDelay: `${i * 0.05}s` }}>
             <div className="ov-stat-icon" style={{ background: s.bg, color: s.color }}>
@@ -253,25 +253,25 @@ export default function Analytics({ selectedGuild }) {
       <div className="ov-charts-row" style={{ gap: '16px', marginTop: '20px' }}>
         <div className="glass-panel ov-chart-card" style={{ flex: 2 }}>
           <div className="ov-chart-header">
-            <h3><i className="fa-solid fa-chart-line" style={{ color: '#ff66b2' }}></i> Activité ({range})</h3>
+            <h3><i className="fa-solid fa-chart-line" style={{ color: '#ff66b2' }}></i> Activity ({range})</h3>
           </div>
           {filteredDaily().length > 0
             ? <div style={{ height: '220px', position: 'relative' }}><canvas ref={lineRef}></canvas></div>
             : <div style={{ height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', flexDirection: 'column', gap: '8px' }}>
                 <i className="fa-solid fa-chart-line" style={{ fontSize: '2rem', opacity: 0.2 }}></i>
-                <span>Pas encore de données sur cette période</span>
+                <span>No data available for this period</span>
               </div>
           }
         </div>
         <div className="glass-panel ov-chart-card ov-chart-doughnut" style={{ flex: 1 }}>
           <div className="ov-chart-header">
-            <h3><i className="fa-solid fa-chart-pie" style={{ color: '#ff66b2' }}></i> Répartition</h3>
+            <h3><i className="fa-solid fa-chart-pie" style={{ color: '#ff66b2' }}></i> Breakdown</h3>
           </div>
           {Object.keys(stats.actionBreakdown || {}).length > 0
             ? <div style={{ height: '220px', position: 'relative' }}><canvas ref={donutRef}></canvas></div>
             : <div style={{ height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', flexDirection: 'column', gap: '8px' }}>
                 <i className="fa-solid fa-chart-pie" style={{ fontSize: '2rem', opacity: 0.2 }}></i>
-                <span>Aucune action enregistrée</span>
+                <span>No actions recorded</span>
               </div>
           }
         </div>
@@ -294,9 +294,9 @@ export default function Analytics({ selectedGuild }) {
         {/* Recent Activity */}
         <div className="glass-panel">
           <h3 style={{ marginBottom: '14px' }}>
-            <i className="fa-solid fa-clock-rotate-left" style={{ color: '#ff66b2' }}></i> Activité récente
+            <i className="fa-solid fa-clock-rotate-left" style={{ color: '#ff66b2' }}></i> Recent activity
             <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginLeft: '8px', fontWeight: 400 }}>
-              {stats.recentActivity?.length || 0} entrée{stats.recentActivity?.length !== 1 ? 's' : ''}
+              {stats.recentActivity?.length || 0} entry{stats.recentActivity?.length !== 1 ? 'ies' : 'y'}
             </span>
           </h3>
           <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
@@ -320,7 +320,7 @@ export default function Analytics({ selectedGuild }) {
             }) : (
               <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-secondary)' }}>
                 <i className="fa-solid fa-inbox" style={{ fontSize: '1.5rem', opacity: 0.2, display: 'block', marginBottom: '8px' }}></i>
-                Aucune activité récente
+                No recent activity
               </div>
             )}
           </div>
@@ -329,7 +329,7 @@ export default function Analytics({ selectedGuild }) {
         {/* Top Moderators */}
         <div className="glass-panel">
           <h3 style={{ marginBottom: '14px' }}>
-            <i className="fa-solid fa-ranking-star" style={{ color: '#ff66b2' }}></i> Top Modérateurs
+            <i className="fa-solid fa-ranking-star" style={{ color: '#ff66b2' }}></i> Top Moderators
           </h3>
           {stats.topModerators?.length > 0 ? (
             <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
@@ -348,7 +348,7 @@ export default function Analytics({ selectedGuild }) {
           ) : (
             <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-secondary)' }}>
               <i className="fa-solid fa-user-group" style={{ fontSize: '1.5rem', opacity: 0.2, display: 'block', marginBottom: '8px' }}></i>
-              Aucun modérateur enregistré
+              No moderators recorded
             </div>
           )}
 
@@ -356,7 +356,7 @@ export default function Analytics({ selectedGuild }) {
           {stats.topTargets?.length > 0 && (
             <>
               <h3 style={{ margin: '20px 0 14px' }}>
-                <i className="fa-solid fa-user-slash" style={{ color: '#ff4444' }}></i> Utilisateurs ciblés
+                <i className="fa-solid fa-user-slash" style={{ color: '#ff4444' }}></i> Targeted Users
               </h3>
               {stats.topTargets.map((t, i) => (
                 <div key={t.userId} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
@@ -377,14 +377,14 @@ export default function Analytics({ selectedGuild }) {
       {/* Config Coverage */}
       {stats.configCoverage && (
         <div className="glass-panel" style={{ marginTop: '16px', borderLeft: '3px solid #10b981' }}>
-          <h3 style={{ marginBottom: '14px' }}><i className="fa-solid fa-shield-halved" style={{ color: '#10b981' }}></i> Couverture de protection</h3>
+          <h3 style={{ marginBottom: '14px' }}><i className="fa-solid fa-shield-halved" style={{ color: '#10b981' }}></i> Protection Coverage</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px' }}>
             {[
-              { label: 'Filtres statiques', value: `${stats.configCoverage.staticEnabled}/${stats.configCoverage.staticTotal}` },
-              { label: 'Filtres IA', value: `${stats.configCoverage.aiEnabled}/${stats.configCoverage.aiTotal}` },
-              { label: 'Mots bloqués', value: stats.configCoverage.wordsCount },
-              { label: 'Domaines autorisés', value: stats.configCoverage.whitelistedDomains },
-              { label: 'Actions auto', value: stats.configCoverage.automationsEnabled ? 'Oui' : 'Non' },
+              { label: 'Static filters', value: `${stats.configCoverage.staticEnabled}/${stats.configCoverage.staticTotal}` },
+              { label: 'AI filters', value: `${stats.configCoverage.aiEnabled}/${stats.configCoverage.aiTotal}` },
+              { label: 'Blocked words', value: stats.configCoverage.wordsCount },
+              { label: 'Whitelisted domains', value: stats.configCoverage.whitelistedDomains },
+              { label: 'Auto actions', value: stats.configCoverage.automationsEnabled ? 'Oui' : 'Non' },
             ].map(f => (
               <div key={f.label} style={{ background: 'rgba(16,185,129,0.06)', borderRadius: '8px', padding: '10px 14px' }}>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>{f.label}</div>

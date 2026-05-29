@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 
-// Stratégie : /api/overview/{guild}/members n'existe pas sur ce backend.
-// On construit la liste depuis les données réelles :
+// Strategy: /api/overview/{guild}/members does not exist on this backend.
+// We build the list from real data:
 //   - /api/moderation/{guild}/cases  → targetId, targetTag, moderatorTag
 //   - /api/moderation/{guild}/warnings → userId
 //   - /api/overview/{guild}/guild-info → memberCount, name
-// Chaque utilisateur unique ayant été ciblé ou modéré est affiché.
+// Each unique user who was targeted or moderated is displayed.
 
 function avatarUrl(userId) {
   try {
@@ -69,7 +69,7 @@ export default function MembersManager({ selectedGuild, user }) {
       if (gInfo) setGuildInfo(gInfo);
 
       if (!cases.length && !warnings.length) {
-        setError('Aucune donnée de modération disponible pour ce serveur.');
+        setError('No moderation data available for this server.');
         setLoading(false);
         return;
       }
@@ -206,13 +206,13 @@ export default function MembersManager({ selectedGuild, user }) {
           </h2>
           <p className="subtitle">
             {guildInfo?.memberCount
-              ? `${guildInfo.memberCount.toLocaleString()} membres sur le serveur · `
+              ? `${guildInfo.memberCount.toLocaleString()} members on server · `
               : ''}
-            Données issues des cases et warnings réels de modération.
+            Data sourced from real moderation cases and warnings.
           </p>
         </div>
         <button className="btn-secondary" style={{ fontSize: '0.8rem' }} onClick={fetchAll}>
-          <i className="fa-solid fa-rotate-right"></i> Rafraîchir
+          <i className="fa-solid fa-rotate-right"></i> Refresh
         </button>
       </div>
 
@@ -220,17 +220,17 @@ export default function MembersManager({ selectedGuild, user }) {
       <div className="glass-panel" style={{ marginBottom: '16px', padding: '11px 16px', display: 'flex', alignItems: 'center', gap: '10px', borderLeft: '3px solid #ffbb33', background: 'rgba(255,187,51,0.05)' }}>
         <i className="fa-solid fa-circle-info" style={{ color: '#ffbb33', flexShrink: 0 }}></i>
         <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-          Les membres affichés sont ceux présents dans l'historique de modération (cases + warnings).
-          {guildInfo?.memberCount && <strong style={{ color: '#fff' }}> Taille réelle du serveur : {guildInfo.memberCount.toLocaleString()} membres.</strong>}
+          Displayed users are those found in the moderation history (cases + warnings).
+          {guildInfo?.memberCount && <strong style={{ color: '#fff' }}> Actual server size: {guildInfo.memberCount.toLocaleString()} members.</strong>}
         </span>
       </div>
 
       {/* KPIs */}
       <div className="ov-stats-grid" style={{ marginBottom: '16px' }}>
         {[
-          { icon: 'fa-solid fa-users',       label: 'Utilisateurs trackés', value: stats.total,      color: '#33b5e5', bg: 'rgba(51,181,229,0.12)' },
-          { icon: 'fa-solid fa-user-xmark',  label: 'Ciblés',               value: stats.targets,    color: '#ff4444', bg: 'rgba(255,68,68,0.12)' },
-          { icon: 'fa-solid fa-user-shield', label: 'Modérateurs',          value: stats.moderators, color: '#00C851', bg: 'rgba(0,200,81,0.12)' },
+          { icon: 'fa-solid fa-users',       label: 'Tracked users', value: stats.total,      color: '#33b5e5', bg: 'rgba(51,181,229,0.12)' },
+          { icon: 'fa-solid fa-user-xmark',  label: 'Targeted',               value: stats.targets,    color: '#ff4444', bg: 'rgba(255,68,68,0.12)' },
+          { icon: 'fa-solid fa-user-shield', label: 'Moderators',          value: stats.moderators, color: '#00C851', bg: 'rgba(0,200,81,0.12)' },
           { icon: 'fa-solid fa-gavel',       label: 'Total infractions',    value: stats.totalInf,   color: '#ff66b2', bg: 'rgba(255,102,178,0.12)' },
         ].map((s, i) => (
           <div key={s.label} className="glass-panel ov-stat-card" style={{ animationDelay: `${i * 0.05}s` }}>
@@ -248,36 +248,36 @@ export default function MembersManager({ selectedGuild, user }) {
         <div style={{ position: 'relative', flex: '1 1 220px' }}>
           <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', fontSize: '0.8rem' }}></i>
           <input
-            type="text" placeholder="Rechercher par nom, tag ou ID…" value={search}
+            type="text" placeholder="Search by name, tag or ID…" value={search}
             onChange={e => { setSearch(e.target.value); setPage(1); }}
             style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 10px 8px 32px', color: '#fff', fontSize: '0.85rem', boxSizing: 'border-box' }}
           />
         </div>
         <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setPage(1); }}
           style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontSize: '0.85rem' }}>
-          <option value="all">Tous ({members.length})</option>
-          <option value="target">Ciblés ({stats.targets})</option>
-          <option value="moderator">Modérateurs ({stats.moderators})</option>
+          <option value="all">All ({members.length})</option>
+          <option value="target">Targeted ({stats.targets})</option>
+          <option value="moderator">Moderators ({stats.moderators})</option>
         </select>
         <select value={sortBy} onChange={e => setSortBy(e.target.value)}
           style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontSize: '0.85rem' }}>
           <option value="infractions">Infractions ↓</option>
-          <option value="modactions">Actions modération ↓</option>
-          <option value="recent">Activité récente</option>
-          <option value="name">Nom A → Z</option>
+          <option value="modactions">Mod actions ↓</option>
+          <option value="recent">Recent activity</option>
+          <option value="name">Name A → Z</option>
         </select>
         <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-          {filtered.length} résultat{filtered.length !== 1 ? 's' : ''}
+          {filtered.length} result{filtered.length !== 1 ? 's' : ''}
         </span>
       </div>
 
-      {loading && <div className="loader">Chargement des données…</div>}
+      {loading && <div className="loader">Loading data…</div>}
 
       {!loading && error && (
         <div className="glass-panel" style={{ padding: '32px', textAlign: 'center', borderLeft: '3px solid #ff4444' }}>
           <i className="fa-solid fa-circle-exclamation" style={{ fontSize: '2rem', color: '#ff4444', marginBottom: '12px', display: 'block' }}></i>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>{error}</p>
-          <button className="btn-secondary" onClick={fetchAll}><i className="fa-solid fa-rotate-right"></i> Réessayer</button>
+          <button className="btn-secondary" onClick={fetchAll}><i className="fa-solid fa-rotate-right"></i> Retry</button>
         </div>
       )}
 
@@ -290,11 +290,11 @@ export default function MembersManager({ selectedGuild, user }) {
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', color: 'var(--text-secondary)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                     <th style={{ padding: '12px 16px', textAlign: 'left' }}>Utilisateur</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'left' }}>Rôle</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left' }}>Role</th>
                     <th style={{ padding: '12px 16px', textAlign: 'center' }}>Cases</th>
                     <th style={{ padding: '12px 16px', textAlign: 'center' }}>Warnings</th>
                     <th style={{ padding: '12px 16px', textAlign: 'center' }}>Actions mod</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right' }}>Dernière activité</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right' }}>Last activity</th>
                     <th style={{ padding: '12px 8px', width: '36px' }}></th>
                   </tr>
                 </thead>
@@ -302,7 +302,7 @@ export default function MembersManager({ selectedGuild, user }) {
                   {paginated.length === 0 ? (
                     <tr><td colSpan={7} style={{ padding: '48px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                       <i className="fa-solid fa-users-slash" style={{ fontSize: '2rem', opacity: 0.2, display: 'block', marginBottom: '10px' }}></i>
-                      Aucun résultat
+                      No results
                     </td></tr>
                   ) : paginated.map(m => {
                     const infCount = m.cases.length + m.warnings.length;
@@ -335,7 +335,7 @@ export default function MembersManager({ selectedGuild, user }) {
                               background: m.role === 'moderator' ? 'rgba(0,200,81,0.12)' : 'rgba(255,68,68,0.12)',
                               color:      m.role === 'moderator' ? '#00C851'              : '#ff4444',
                             }}>
-                              {m.role === 'moderator' ? '🛡 Modérateur' : '⚠ Ciblé'}
+                              {m.role === 'moderator' ? '🛡 Moderator' : '⚠ Targeted'}
                             </span>
                           </td>
                           {/* Cases */}
@@ -385,7 +385,7 @@ export default function MembersManager({ selectedGuild, user }) {
                                           <span style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', flexShrink: 0 }}>{relTime(c.timestamp)}</span>
                                         </div>
                                       ))}
-                                      {m.cases.length > 5 && <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '6px' }}>+{m.cases.length - 5} autres…</div>}
+                                      {m.cases.length > 5 && <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '6px' }}>+{m.cases.length - 5} more…</div>}
                                     </div>
                                   )}
 
@@ -409,7 +409,7 @@ export default function MembersManager({ selectedGuild, user }) {
                                   {m.modActions?.length > 0 && (
                                     <div>
                                       <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>
-                                        Actions effectuées ({m.modActions.length})
+                                        Actions performed ({m.modActions.length})
                                       </div>
                                       {m.modActions.slice(0, 5).map((a, i) => (
                                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: '0.82rem' }}>
@@ -454,7 +454,7 @@ export default function MembersManager({ selectedGuild, user }) {
                 <i className="fa-solid fa-chevron-right"></i>
               </button>
               <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginLeft: '8px' }}>
-                Page {page}/{pages} · {filtered.length} utilisateurs
+                Page {page}/{pages} · {filtered.length} users
               </span>
             </div>
           )}

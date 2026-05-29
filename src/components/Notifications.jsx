@@ -169,7 +169,7 @@ export default function Notifications({ selectedGuild }) {
             )}
           </h2>
           <p className="subtitle">
-            Alertes de modération réelles — {allNotifs.length} entrée{allNotifs.length !== 1 ? 's' : ''} chargée{allNotifs.length !== 1 ? 's' : ''}.
+            Real moderation alerts — {allNotifs.length} entry{allNotifs.length !== 1 ? 'ies' : 'y'} loaded.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -177,13 +177,13 @@ export default function Notifications({ selectedGuild }) {
             <i className="fa-solid fa-rotate-right"></i>
           </button>
           <button className="btn-secondary" style={{ fontSize: '0.8rem' }} onClick={markAllRead}>
-            <i className="fa-solid fa-check-double"></i> Tout lire
+            <i className="fa-solid fa-check-double"></i> Mark all read
           </button>
           <button className="btn-secondary" style={{ fontSize: '0.8rem' }} onClick={() => setSettingsOpen(s => !s)}>
-            <i className="fa-solid fa-sliders"></i> Filtres
+            <i className="fa-solid fa-sliders"></i> Filters
           </button>
           <button className="btn-secondary" style={{ fontSize: '0.8rem', color: '#ff4444' }} onClick={dismissAll}>
-            <i className="fa-solid fa-eye-slash"></i> Tout masquer
+            <i className="fa-solid fa-eye-slash"></i> Hide all
           </button>
         </div>
       </div>
@@ -211,7 +211,7 @@ export default function Notifications({ selectedGuild }) {
       {/* Settings panel */}
       {settingsOpen && (
         <div className="glass-panel animate-fade-in" style={{ marginBottom: '16px', borderLeft: '3px solid var(--premium-pink)' }}>
-          <h3 style={{ marginBottom: '14px' }}><i className="fa-solid fa-sliders" style={{ color: 'var(--premium-pink)' }}></i> Afficher les types</h3>
+          <h3 style={{ marginBottom: '14px' }}><i className="fa-solid fa-sliders" style={{ color: 'var(--premium-pink)' }}></i> Show types</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '8px' }}>
             {Object.entries(TYPE_META).map(([k, m]) => (
               <label key={k} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '8px 12px', borderRadius: '8px', background: 'rgba(255,255,255,0.03)' }}>
@@ -234,27 +234,27 @@ export default function Notifications({ selectedGuild }) {
             onClick={() => setFilter(f)}
           >
             {f === 'all'    ? `Tous (${visibleNotifs.length})`
-             : f === 'unread' ? `Non lus (${unreadCount})`
-             : 'Lus'}
+             : f === 'unread' ? `Unread (${unreadCount})`
+             : 'Read'}
           </button>
         ))}
       </div>
 
       {/* List */}
       {loading ? (
-        <div className="loader">Chargement des notifications…</div>
+        <div className="loader">Loading notifications…</div>
       ) : error ? (
         <div className="glass-panel" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
           <i className="fa-solid fa-circle-exclamation" style={{ fontSize: '2rem', color: '#ff4444', marginBottom: '12px', display: 'block' }}></i>
-          <p>Erreur : {error}</p>
-          <button className="btn-secondary" style={{ marginTop: '12px' }} onClick={fetchData}>Réessayer</button>
+          <p>Error: {error}</p>
+          <button className="btn-secondary" style={{ marginTop: '12px' }} onClick={fetchData}>Retry</button>
         </div>
       ) : (
         <div className="glass-panel" style={{ padding: 0, overflow: 'hidden' }}>
           {filtered.length === 0 ? (
             <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
               <i className="fa-solid fa-bell-slash" style={{ fontSize: '2.5rem', opacity: 0.2, marginBottom: '12px', display: 'block' }}></i>
-              <p>Aucune notification dans cette catégorie.</p>
+              <p>No notifications in this category.</p>
             </div>
           ) : (
             <div style={{ maxHeight: '680px', overflowY: 'auto' }}>
