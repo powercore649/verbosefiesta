@@ -4,7 +4,7 @@ import Sidebar from '../components/Sidebar';
 import Overview from '../components/Overview';
 import Moderation from '../components/Moderation';
 import AutoModeration from '../components/AutoModeration';
-import LandingOverlay from '../components/LandingOverlay';
+import ServerList from './ServerList';
 import Docs from '../components/Docs';
 import CommandCenter from '../components/CommandCenter';
 import AccountManager from '../components/AccountManager';
@@ -113,10 +113,10 @@ export default function Dashboard() {
     : 'https://cdn.discordapp.com/embed/avatars/0.png';
 
   if (!user) return <div className="login-body"><div className="loader">Authenticating...</div></div>;
+  if (showLanding) return <ServerList user={user} onSelectGuild={handleGuildSelect} />;
 
   return (
     <div className="app-container">
-      {showLanding && <LandingOverlay guilds={user.allowedGuilds} onSelectGuild={handleGuildSelect} />}
       
       <Sidebar 
         user={user} 
