@@ -205,7 +205,12 @@ export default function Dashboard() {
         <div className="content-area">
           {canRenderPage && (
             <>
-              {activePage === 'overview'      && <Overview selectedGuild={selectedGuild} />}
+              {activePage === 'overview'      && (
+                <>
+                  <DashboardShortcuts setActivePage={setActivePage} selectedGuild={selectedGuild} />
+                  <Overview selectedGuild={selectedGuild} />
+                </>
+              )}
               {activePage === 'moderation'    && <Moderation selectedGuild={selectedGuild} />}
               {activePage === 'automod'       && <AutoModeration selectedGuild={selectedGuild} />}
               {activePage === 'commands'      && <CommandCenter />}
@@ -236,6 +241,58 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function DashboardShortcuts({ setActivePage, selectedGuild }) {
+  const navigate = useNavigate();
+  const SHORTCUTS = [
+    { icon: 'fa-solid fa-chart-pie',          label: 'Overview',        sub: 'Server stats',          page: 'overview',       color: '#ff66b2' },
+    { icon: 'fa-solid fa-chart-line',         label: 'Analytics',       sub: 'Deep insights',         page: 'analytics',      color: '#33b5e5' },
+    { icon: 'fa-solid fa-gavel',              label: 'Moderation',      sub: 'Cases & warnings',      page: 'moderation',     color: '#ffbb33' },
+    { icon: 'fa-solid fa-users',              label: 'Members',         sub: 'User history',          page: 'members',        color: '#10b981' },
+    { icon: 'fa-solid fa-bell',               label: 'Notifications',   sub: 'Alerts feed',           page: 'notifications',  color: '#f59e0b' },
+    { icon: 'fa-solid fa-shield-halved',      label: 'Auto Mod',        sub: 'Smart filters',         page: 'automod',        color: '#00C851' },
+    { icon: 'fa-solid fa-terminal',           label: 'Commands',        sub: 'Bot catalog',           page: 'commands',       color: '#aa66cc' },
+    { icon: 'fa-solid fa-book',               label: 'Docs',            sub: 'Guides & help',         page: 'docs',           color: '#64748b' },
+    { icon: 'fa-solid fa-user-gear',          label: 'Account',         sub: 'Profile & settings',    page: 'account',        color: '#94a3b8' },
+    { icon: 'fa-solid fa-file-contract',      label: 'Terms',           sub: 'Legal info',            ext: '/tos',            color: '#64748b' },
+    { icon: 'fa-solid fa-shield-halved',      label: 'Privacy',         sub: 'Privacy policy',        ext: '/privacy',        color: '#64748b' },
+    { icon: 'fa-solid fa-house',              label: 'Home',            sub: 'Landing page',          ext: '/',               color: '#64748b' },
+  ];
+
+  return (
+    <div style={{ marginBottom: '24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+        <i className="fa-solid fa-bolt" style={{ color: '#ff66b2', fontSize: '0.85rem' }}></i>
+        <span style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.35)', fontWeight: '600' }}>Quick shortcuts</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '10px' }}>
+        {SHORTCUTS.map((s, i) => (
+          <button
+            key={i}
+            onClick={() => s.ext ? navigate(s.ext) : setActivePage(s.page)}
+            style={{
+              background: `${s.color}0d`, border: `1px solid ${s.color}22`,
+              borderRadius: '10px', padding: '12px 14px',
+              color: '#fff', cursor: 'pointer', textAlign: 'left',
+              display: 'flex', alignItems: 'center', gap: '10px',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = `${s.color}1a`; e.currentTarget.style.borderColor = `${s.color}44`; }}
+            onMouseLeave={e => { e.currentTarget.style.background = `${s.color}0d`; e.currentTarget.style.borderColor = `${s.color}22`; }}
+          >
+            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: `${s.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <i className={s.icon} style={{ color: s.color, fontSize: '0.85rem' }}></i>
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: '600', fontSize: '0.82rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.label}</div>
+              <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)', marginTop: '1px' }}>{s.sub}</div>
+            </div>
+          </button>
+        ))}
       </div>
     </div>
   );

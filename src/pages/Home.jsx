@@ -263,6 +263,52 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Quick Shortcuts */}
+      <section style={{ padding: '60px 24px', maxWidth: '1100px', margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+          <span className="home-section-badge">Quick Access</span>
+          <h2 style={{ fontSize: '1.8rem', fontWeight: '800', margin: '14px 0 8px' }}>Everything in one click</h2>
+          <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.95rem' }}>Jump straight to what you need.</p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '14px' }}>
+          {[
+            { icon: 'fa-solid fa-gauge-high',       label: 'Dashboard',        sub: 'Your control center',       path: '/dashboard',            color: '#ff66b2', grad: 'rgba(255,102,178,0.12)' },
+            { icon: 'fa-solid fa-chart-line',        label: 'Analytics',        sub: 'Stats & insights',          path: '/dashboard',            color: '#33b5e5', grad: 'rgba(51,181,229,0.12)'  },
+            { icon: 'fa-solid fa-gavel',             label: 'Moderation',       sub: 'Cases & warnings',          path: '/dashboard',            color: '#ffbb33', grad: 'rgba(255,187,51,0.12)'  },
+            { icon: 'fa-solid fa-shield-halved',     label: 'Auto Moderation',  sub: 'Smart filters',             path: '/dashboard',            color: '#00C851', grad: 'rgba(0,200,81,0.12)'    },
+            { icon: 'fa-solid fa-terminal',          label: 'Command Center',   sub: 'Bot commands catalog',      path: '/dashboard',            color: '#aa66cc', grad: 'rgba(170,102,204,0.12)' },
+            { icon: 'fa-solid fa-users',             label: 'Members',          sub: 'Member management',         path: '/dashboard',            color: '#10b981', grad: 'rgba(16,185,129,0.12)'  },
+            { icon: 'fa-solid fa-book',              label: 'Docs & Guides',    sub: 'Help & documentation',      path: '/dashboard',            color: '#f59e0b', grad: 'rgba(245,158,11,0.12)'  },
+            { icon: 'fa-solid fa-file-contract',     label: 'Terms of Service', sub: 'Legal information',         path: '/tos',                  color: '#94a3b8', grad: 'rgba(148,163,184,0.1)'  },
+            { icon: 'fa-solid fa-shield-halved',     label: 'Privacy Policy',   sub: 'How we use your data',      path: '/privacy',              color: '#94a3b8', grad: 'rgba(148,163,184,0.1)'  },
+            { icon: 'fa-brands fa-discord',          label: 'Login',            sub: 'Sign in with Discord',      path: '/login',                color: '#5865F2', grad: 'rgba(88,101,242,0.12)'  },
+          ].map((s, i) => (
+            <button
+              key={i}
+              onClick={() => navigate(s.path)}
+              style={{
+                background: s.grad, border: `1px solid ${s.color}22`,
+                borderRadius: '12px', padding: '18px 20px',
+                color: '#fff', cursor: 'pointer', textAlign: 'left',
+                display: 'flex', alignItems: 'center', gap: '14px',
+                transition: 'transform 0.15s, box-shadow 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 8px 24px ${s.color}22`; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}
+            >
+              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: `${s.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <i className={s.icon} style={{ color: s.color, fontSize: '1rem' }}></i>
+              </div>
+              <div>
+                <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{s.label}</div>
+                <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>{s.sub}</div>
+              </div>
+              <i className="fa-solid fa-chevron-right" style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.2)', fontSize: '0.7rem' }}></i>
+            </button>
+          ))}
+        </div>
+      </section>
+
       {/* Footer */}
       <footer className="home-footer">
         <div className="home-footer-inner">
@@ -270,14 +316,33 @@ export default function Home() {
             <span className="brand-text-glow" style={{ fontSize: '1.2rem' }}>zyntra</span>
             <p>AI Moderation Platform for Discord</p>
           </div>
-          <div className="home-footer-links">
-            <a href="#features">Features</a>
-            <a href="#stats">Performance</a>
-            <span style={{ cursor: 'pointer' }} onClick={() => navigate(loggedInUser ? '/dashboard' : '/login')}>Dashboard</span>
+          <div style={{ display: 'flex', gap: '48px', flexWrap: 'wrap' }}>
+            <div>
+              <p style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.3)', marginBottom: '10px' }}>Product</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <a href="#features" style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', fontSize: '0.85rem' }}>Features</a>
+                <a href="#stats" style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', fontSize: '0.85rem' }}>Performance</a>
+                <span style={{ cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }} onClick={() => navigate(loggedInUser ? '/dashboard' : '/login')}>Dashboard</span>
+              </div>
+            </div>
+            <div>
+              <p style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.3)', marginBottom: '10px' }}>Legal</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <span style={{ cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }} onClick={() => navigate('/tos')}>Terms of Service</span>
+                <span style={{ cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }} onClick={() => navigate('/privacy')}>Privacy Policy</span>
+              </div>
+            </div>
+            <div>
+              <p style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.3)', marginBottom: '10px' }}>Account</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <span style={{ cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }} onClick={() => navigate('/login')}>Login</span>
+                {loggedInUser && <span style={{ cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }} onClick={handleLogout}>Log Out</span>}
+              </div>
+            </div>
           </div>
         </div>
         <div className="home-footer-bottom">
-          <p>&copy; {new Date().getFullYear()} zyntra. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} zyntra. All rights reserved. · <span style={{ cursor: 'pointer', color: 'rgba(255,255,255,0.4)' }} onClick={() => navigate('/tos')}>Terms</span> · <span style={{ cursor: 'pointer', color: 'rgba(255,255,255,0.4)' }} onClick={() => navigate('/privacy')}>Privacy</span></p>
         </div>
       </footer>
     </div>
